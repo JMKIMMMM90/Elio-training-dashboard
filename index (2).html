@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>신입교육 대시보드 · 2026.9.2 ~ 10.1</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #101013; }
+  button:hover { filter: brightness(1.08); }
+  button:focus-visible { outline: 2px solid #4593FC; outline-offset: 2px; }
+  input:focus { border-color: #4593FC !important; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+
+// GitHub Pages용 저장 어댑터: 브라우저 localStorage 사용 (기기별 저장)
+const storageAdapter = {
+  async get(key) {
+    const v = localStorage.getItem(key);
+    return v === null ? null : { key, value: v };
+  },
+  async set(key, value) {
+    localStorage.setItem(key, value);
+    return { key, value };
+  },
+};
+const { useState, useEffect, useMemo } = React;
+
+/* ─────────────────────────────────────────────
+   신입교육 4주 진척도 대시보드 · Toss 다크 스타일
+   시작: 2026-09-02(수) / 추석 연휴(9/24~9/26) 제외
+────────────────────────────────────────────── */
+
+const FONT = `Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif`;
+
+// ── 테마 팔레트 ──────────────────────────────
+const THEMES = {
+  dark: {
+    bg: "#101013",
+    card: "#1B1B20",
+    cardSoft: "#232329",
+    text: "#E7E9EC",
+    sub: "#9DA5AF",
+    faint: "#6E7681",
+    line: "#2A2A31",
+    blue: "#4593FC",
+    blueSoft: "rgba(69,147,252,0.16)",
+    green: "#1FC383",
+    greenSoft: "rgba(31,195,131,0.16)",
+    red: "#F0616D",
+    redSoft: "rgba(240,97,109,0.16)",
+    orange: "#FFA938",
+    orangeSoft: "rgba(255,169,56,0.16)",
+    purple: "#A78BFA",
+    purpleSoft: "rgba(167,139,250,0.16)",
+    checkOff: "#3A3A42",
+    inputBorder: "#33333B",
+    shadow: "none",
+  },
+  light: {
+    bg: "#F2F4F6",
+    card: "#FFFFFF",
+    cardSoft: "#FAFBFC",
+    text: "#191F28",
+    sub: "#6B7684",
+    faint: "#8B95A1",
+    line: "#F2F4F6",
+    blue: "#3182F6",
+    blueSoft: "#E8F3FF",
+    green: "#00C471",
+    greenSoft: "#E5F9F1",
+    red: "#F04452",
+    redSoft: "#FDEDEE",
+    orange: "#FF9500",
+    orangeSoft: "#FFF4E5",
+    purple: "#7C3AED",
+    purpleSoft: "#F1EBFD",
+    checkOff: "#D1D6DB",
+    inputBorder: "#E5E8EB",
+    shadow: "0 1px 3px rgba(25,31,40,0.04)",
+  },
+};
+
+// ── 커리큘럼 (스크린샷 기반) ──────────────────
+const WEEKS = [
+  {
+    no: 1,
+    range: "9/2(수) ~ 9/8(화)",
+    ppt: "기초과제 쉐도잉 연습",
+    project: "[비전전략] 울산대병원",
+    book: "병원에서 일하는 이유",
+    dates: ["2026-09-02", "2026-09-03", "2026-09-04", "2026-09-07", "2026-09-08"],
+  },
+  {
+    no: 2,
+    range: "9/9(수) ~ 9/15(화)",
+    ppt: "기초과제 쉐도잉 AI 전환",
+    project: "[개원] 평택아주대병원",
+    book: "병원경영 실전전략",
+    dates: ["2026-09-09", "2026-09-10", "2026-09-11", "2026-09-14", "2026-09-15"],
+  },
+  {
+    no: 3,
+    range: "9/16(수) ~ 9/22(화)",
+    ppt: "심화과제 연습",
+    project: "[성과급] 울산대병원",
+    book: "중소병원 생존전략",
+    dates: ["2026-09-16", "2026-09-17", "2026-09-18", "2026-09-21", "2026-09-22"],
+  },
+  {
+    no: 4,
+    range: "9/23(수) ~ 10/1(목)",
+    ppt: "PPT 테스트 대비 (AI 활용)",
+    project: "[프로세스] 울산대 검사실",
+    book: "경영의 명의",
+    dates: ["2026-09-23", "2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01"],
+    holidayNote: "추석 연휴 9/24(목)~9/26(토) 휴무 → 4주차는 10/1(목)까지 진행",
+  },
+];
+
+const HOLIDAYS = { "2026-09-24": "추석 연휴", "2026-09-25": "추석", "2026-09-26": "추석 연휴" };
+const DOW = ["일", "월", "화", "수", "목", "금", "토"];
+
+// 주차별 캘린더 색 (키는 테마 팔레트 이름)
+const WEEK_COLOR = { 1: "blue", 2: "green", 3: "purple", 4: "orange" };
+
+function buildSchedule() {
+  const days = [];
+  WEEKS.forEach((w, wi) => {
+    w.dates.forEach((dateStr, di) => {
+      const isLast = di === w.dates.length - 1;
+      const tasks = [
+        { id: "ppt", cat: "PPT", label: w.ppt },
+        { id: "proj", cat: "프로젝트", label: `보고서 숙지 · ${w.project}` },
+        { id: "book", cat: "도서", label: `독서 · 『${w.book}』` },
+      ];
+      const tests = [];
+      if (isLast) {
+        tests.push({ id: "report-book", cat: "제출", label: `독후감 제출 『${w.book}』` });
+        tests.push({ id: "test-proj", cat: "TEST", label: `프로젝트 서술형 TEST (${w.project})` });
+        tests.push({ id: "test-book", cat: "TEST", label: `도서 퀴즈·서술형 TEST (${w.book})` });
+        if (w.no === 4) tests.push({ id: "test-ppt", cat: "TEST", label: "PPT 테스트 (AI 활용)" });
+      }
+      days.push({
+        key: `w${w.no}d${di + 1}`,
+        week: w.no,
+        dayNo: wi * 5 + di + 1,
+        date: dateStr,
+        isLast,
+        tasks: [...tasks, ...tests],
+      });
+    });
+  });
+  return days;
+}
+
+const SCHEDULE = buildSchedule();
+const DAY_BY_DATE = Object.fromEntries(SCHEDULE.map((d) => [d.date, d]));
+
+function fmtDate(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  return { m: d.getMonth() + 1, day: d.getDate(), dow: DOW[d.getDay()] };
+}
+
+function todayStr() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// 달력 그리드: 2026-08-30(일) ~ 2026-10-03(토), 5행 × 7열
+function buildCalendarRows() {
+  const rows = [];
+  const start = new Date("2026-08-30T00:00:00");
+  const p = (n) => String(n).padStart(2, "0");
+  for (let r = 0; r < 5; r++) {
+    const row = [];
+    for (let c = 0; c < 7; c++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + r * 7 + c);
+      const ds = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      row.push({ dateStr: ds, month: d.getMonth() + 1, day: d.getDate(), dow: c });
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+const CAL_ROWS = buildCalendarRows();
+
+const STORAGE_KEY = "training-dashboard-2026";
+
+function TrainingDashboard() {
+  const today = todayStr();
+  const todayIdx = SCHEDULE.findIndex((d) => d.date === today);
+  const defaultWeek =
+    todayIdx >= 0
+      ? SCHEDULE[todayIdx].week
+      : today < SCHEDULE[0].date
+      ? 1
+      : today > SCHEDULE[SCHEDULE.length - 1].date
+      ? 4
+      : SCHEDULE.find((d) => d.date >= today)?.week ?? 1;
+
+  const [theme, setTheme] = useState("dark");
+  const T = THEMES[theme];
+  const [view, setView] = useState("calendar"); // calendar | week
+  const [week, setWeek] = useState(defaultWeek);
+  const [checks, setChecks] = useState({});
+  const [logs, setLogs] = useState({});
+  const [openDay, setOpenDay] = useState(todayIdx >= 0 ? SCHEDULE[todayIdx].key : null);
+  const [loaded, setLoaded] = useState(false);
+  const [saveState, setSaveState] = useState("idle");
+
+  const CAT_STYLE = {
+    PPT: { bg: T.blueSoft, fg: T.blue },
+    프로젝트: { bg: T.greenSoft, fg: T.green },
+    도서: { bg: T.purpleSoft, fg: T.purple },
+    제출: { bg: T.orangeSoft, fg: T.orange },
+    TEST: { bg: T.redSoft, fg: T.red },
+  };
+
+  // ── 저장 데이터 로드 ──
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await storageAdapter.get(STORAGE_KEY);
+        if (r?.value) {
+          const p = JSON.parse(r.value);
+          setChecks(p.checks || {});
+          setLogs(p.logs || {});
+          if (p.theme) setTheme(p.theme);
+        }
+      } catch (e) {
+        /* 저장 데이터 없음 */
+      }
+      setLoaded(true);
+    })();
+  }, []);
+
+  const persist = async (nextChecks, nextLogs, nextTheme) => {
+    setSaveState("saving");
+    try {
+      const r = await storageAdapter.set(
+        STORAGE_KEY,
+        JSON.stringify({ checks: nextChecks, logs: nextLogs, theme: nextTheme })
+      );
+      setSaveState(r ? "idle" : "error");
+    } catch {
+      setSaveState("error");
+    }
+  };
+
+  const toggleTask = (dayKey, taskId) => {
+    const k = `${dayKey}:${taskId}`;
+    const next = { ...checks, [k]: !checks[k] };
+    setChecks(next);
+    persist(next, logs, theme);
+  };
+
+  const addLog = (dayKey, time, text) => {
+    if (!text.trim()) return;
+    const list = logs[dayKey] ? [...logs[dayKey]] : [];
+    list.push({ time: time || "--:--", text: text.trim() });
+    list.sort((a, b) => a.time.localeCompare(b.time));
+    const next = { ...logs, [dayKey]: list };
+    setLogs(next);
+    persist(checks, next, theme);
+  };
+
+  const removeLog = (dayKey, idx) => {
+    const list = logs[dayKey].filter((_, i) => i !== idx);
+    const next = { ...logs, [dayKey]: list };
+    setLogs(next);
+    persist(checks, next, theme);
+  };
+
+  const switchTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    persist(checks, logs, next);
+  };
+
+  // ── 진행률 ──
+  const stats = useMemo(() => {
+    const per = {};
+    let allDone = 0,
+      allTotal = 0;
+    WEEKS.forEach((w) => {
+      let done = 0,
+        total = 0;
+      SCHEDULE.filter((d) => d.week === w.no).forEach((d) => {
+        d.tasks.forEach((t) => {
+          total++;
+          if (checks[`${d.key}:${t.id}`]) done++;
+        });
+      });
+      per[w.no] = { done, total, pct: total ? Math.round((done / total) * 100) : 0 };
+      allDone += done;
+      allTotal += total;
+    });
+    return {
+      per,
+      all: { done: allDone, total: allTotal, pct: allTotal ? Math.round((allDone / allTotal) * 100) : 0 },
+    };
+  }, [checks]);
+
+  const dayDoneMap = useMemo(() => {
+    const m = {};
+    SCHEDULE.forEach((d) => {
+      const done = d.tasks.filter((t) => checks[`${d.key}:${t.id}`]).length;
+      m[d.key] = { done, total: d.tasks.length, complete: done === d.tasks.length };
+    });
+    return m;
+  }, [checks]);
+
+  const goDay = (dateStr) => {
+    const d = DAY_BY_DATE[dateStr];
+    if (!d) return;
+    setWeek(d.week);
+    setOpenDay(d.key);
+    setView("week");
+  };
+
+  const curWeek = WEEKS.find((w) => w.no === week);
+  const curDays = SCHEDULE.filter((d) => d.week === week);
+
+  const card = (mt = 0) => ({
+    background: T.card,
+    borderRadius: 20,
+    padding: 18,
+    marginTop: mt,
+    boxShadow: T.shadow,
+  });
+
+  if (!loaded)
+    return (
+      <div style={{ fontFamily: FONT, background: THEMES.dark.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: THEMES.dark.faint, fontSize: 15 }}>
+        불러오는 중…
+      </div>
+    );
+
+  return (
+    <div style={{ fontFamily: FONT, background: T.bg, minHeight: "100vh", color: T.text, transition: "background .2s" }}>
+      <div style={{ maxWidth: 720, margin: "0 auto", padding: "28px 16px 80px" }}>
+        {/* ── 헤더 ── */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "4px 4px 20px" }}>
+          <div>
+            <div style={{ fontSize: 14, color: T.faint, fontWeight: 600, marginBottom: 6 }}>
+              신입교육 프로그램 · 2026.9.2(수) ~ 10.1(목)
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.5px", lineHeight: 1.3 }}>
+              4주 교육, 지금 <span style={{ color: T.blue }}>{stats.all.pct}%</span> 왔어요
+            </div>
+          </div>
+          <button
+            onClick={switchTheme}
+            aria-label="테마 전환"
+            style={{
+              border: "none",
+              cursor: "pointer",
+              fontFamily: FONT,
+              fontSize: 13,
+              fontWeight: 700,
+              padding: "8px 12px",
+              borderRadius: 12,
+              background: T.card,
+              color: T.sub,
+            }}
+          >
+            {theme === "dark" ? "☀️ 라이트" : "🌙 다크"}
+          </button>
+        </div>
+
+        {/* ── 전체 진행률 ── */}
+        <div style={card()}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+            <span style={{ fontSize: 15, fontWeight: 700 }}>전체 진행률</span>
+            <span style={{ fontSize: 13, color: T.faint }}>{stats.all.done} / {stats.all.total} 완료</span>
+          </div>
+          <Bar pct={stats.all.pct} h={10} T={T} />
+          <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+            {WEEKS.map((w) => (
+              <div key={w.no} style={{ flex: 1, textAlign: "center" }}>
+                <div style={{ fontSize: 12, color: T[WEEK_COLOR[w.no]], fontWeight: 700, marginBottom: 2 }}>{w.no}주차</div>
+                <div style={{ fontSize: 11, color: T.faint, marginBottom: 4 }}>{w.range.replace(/\([^)]*\)/g, "")}</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: stats.per[w.no].pct === 100 ? T.green : T.text }}>
+                  {stats.per[w.no].pct}%
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── 뷰 전환 ── */}
+        <div style={{ display: "flex", gap: 8, margin: "20px 0 16px", background: T.card, borderRadius: 14, padding: 4 }}>
+          {[
+            { id: "calendar", label: "📅 전체 달력" },
+            { id: "week", label: "✅ 주차별 체크" },
+          ].map((v) => {
+            const active = view === v.id;
+            return (
+              <button
+                key={v.id}
+                onClick={() => setView(v.id)}
+                style={{
+                  flex: 1,
+                  padding: "11px 0",
+                  borderRadius: 11,
+                  border: "none",
+                  cursor: "pointer",
+                  fontFamily: FONT,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  background: active ? (theme === "dark" ? T.cardSoft : "#191F28") : "transparent",
+                  color: active ? (theme === "dark" ? T.text : "#fff") : T.faint,
+                  transition: "background .15s, color .15s",
+                }}
+              >
+                {v.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ══════════ 달력 뷰 ══════════ */}
+        {view === "calendar" && (
+          <>
+            <div style={card()}>
+              <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>2026년 9월 ~ 10월 초</div>
+              <div style={{ fontSize: 13, color: T.faint, marginBottom: 14 }}>날짜를 누르면 해당 일의 체크리스트로 이동해요</div>
+
+              {/* 요일 헤더 */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 6 }}>
+                {DOW.map((d, i) => (
+                  <div key={d} style={{ textAlign: "center", fontSize: 12, fontWeight: 700, color: i === 0 ? T.red : i === 6 ? T.blue : T.faint, padding: "4px 0" }}>
+                    {d}
+                  </div>
+                ))}
+              </div>
+
+              {/* 날짜 그리드 */}
+              {CAL_ROWS.map((row, ri) => (
+                <div key={ri} style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 4 }}>
+                  {row.map((cell) => {
+                    const tDay = DAY_BY_DATE[cell.dateStr];
+                    const holiday = HOLIDAYS[cell.dateStr];
+                    const isToday = cell.dateStr === today;
+                    const wc = tDay ? T[WEEK_COLOR[tDay.week]] : null;
+                    const wcSoft = tDay ? T[WEEK_COLOR[tDay.week] + "Soft"] : null;
+                    const st = tDay ? dayDoneMap[tDay.key] : null;
+                    const outRange = cell.dateStr < "2026-09-01" || cell.dateStr > "2026-10-02";
+
+                    return (
+                      <button
+                        key={cell.dateStr}
+                        onClick={() => tDay && goDay(cell.dateStr)}
+                        disabled={!tDay}
+                        style={{
+                          fontFamily: FONT,
+                          border: isToday ? `1.5px solid ${T.blue}` : "1.5px solid transparent",
+                          borderRadius: 12,
+                          cursor: tDay ? "pointer" : "default",
+                          padding: "6px 2px 7px",
+                          minHeight: 64,
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          gap: 3,
+                          background: tDay ? wcSoft : holiday ? T.redSoft : "transparent",
+                          opacity: outRange ? 0.35 : 1,
+                          transition: "transform .1s",
+                        }}
+                      >
+                        <span style={{ fontSize: 13, fontWeight: 700, color: holiday ? T.red : tDay ? T.text : T.faint }}>
+                          {cell.day}
+                          {cell.day === 1 && <span style={{ fontSize: 10, fontWeight: 600 }}> /{cell.month}월</span>}
+                        </span>
+                        {tDay && (
+                          <>
+                            <span style={{ fontSize: 10, fontWeight: 800, color: wc, lineHeight: 1 }}>D{tDay.dayNo}</span>
+                            {tDay.isLast ? (
+                              <span style={{ fontSize: 9, fontWeight: 800, color: T.red, background: theme === "dark" ? "rgba(240,97,109,0.22)" : "#FDD8DB", padding: "1px 5px", borderRadius: 6 }}>
+                                TEST
+                              </span>
+                            ) : st.done > 0 ? (
+                              <span style={{ fontSize: 9, fontWeight: 700, color: st.complete ? T.green : wc }}>
+                                {st.complete ? "✓ 완료" : `${st.done}/${st.total}`}
+                              </span>
+                            ) : (
+                              <span style={{ width: 4, height: 4, borderRadius: 2, background: wc, opacity: 0.5 }} />
+                            )}
+                          </>
+                        )}
+                        {holiday && <span style={{ fontSize: 9, fontWeight: 700, color: T.red }}>{holiday}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+
+            {/* 범례 + 주차 요약 */}
+            <div style={card(12)}>
+              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>주차별 일정 한눈에 보기</div>
+              {WEEKS.map((w, i) => (
+                <div
+                  key={w.no}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: "11px 0",
+                    borderBottom: i === WEEKS.length - 1 ? "none" : `1px solid ${T.line}`,
+                  }}
+                >
+                  <span style={{ width: 12, height: 12, borderRadius: 4, background: T[WEEK_COLOR[w.no]], flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>
+                      {w.no}주차 <span style={{ color: T.sub, fontWeight: 600 }}>· {w.range}</span>
+                    </div>
+                    <div style={{ fontSize: 12.5, color: T.faint, marginTop: 3, lineHeight: 1.5 }}>
+                      {w.ppt} / {w.project} / 『{w.book}』
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: stats.per[w.no].pct === 100 ? T.green : T.sub, flexShrink: 0 }}>
+                    {stats.per[w.no].pct}%
+                  </span>
+                </div>
+              ))}
+              <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 12, background: T.redSoft, color: T.red, fontSize: 12.5, fontWeight: 600, lineHeight: 1.5 }}>
+                추석 연휴 9/24(목)~9/26(토)는 휴무 — 4주차가 10/1(목)까지 이어집니다
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ══════════ 주차별 체크 뷰 ══════════ */}
+        {view === "week" && (
+          <>
+            {/* 주차 탭 */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              {WEEKS.map((w) => {
+                const active = w.no === week;
+                const wc = T[WEEK_COLOR[w.no]];
+                return (
+                  <button
+                    key={w.no}
+                    onClick={() => setWeek(w.no)}
+                    style={{
+                      flex: 1,
+                      padding: "10px 0 9px",
+                      borderRadius: 14,
+                      border: active ? `1.5px solid ${wc}` : "1.5px solid transparent",
+                      cursor: "pointer",
+                      fontFamily: FONT,
+                      background: active ? T[WEEK_COLOR[w.no] + "Soft"] : T.card,
+                      transition: "background .15s",
+                    }}
+                  >
+                    <div style={{ fontSize: 14, fontWeight: 800, color: active ? wc : T.sub }}>{w.no}주차</div>
+                    <div style={{ fontSize: 10.5, fontWeight: 600, color: active ? wc : T.faint, marginTop: 2, opacity: 0.85 }}>
+                      {w.range.replace(/\([^)]*\)/g, "")}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 주차 커리큘럼 요약 */}
+            <div style={card()}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+                <span style={{ fontSize: 15, fontWeight: 700 }}>{week}주차 학습 내용</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: T[WEEK_COLOR[week]] }}>{curWeek.range}</span>
+              </div>
+              <SummaryRow cat="PPT" text={curWeek.ppt} CAT_STYLE={CAT_STYLE} T={T} />
+              <SummaryRow cat="프로젝트" text={curWeek.project} CAT_STYLE={CAT_STYLE} T={T} />
+              <SummaryRow cat="도서" text={`『${curWeek.book}』`} last={!curWeek.holidayNote} CAT_STYLE={CAT_STYLE} T={T} />
+              {curWeek.holidayNote && (
+                <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 12, background: T.orangeSoft, color: T.orange, fontSize: 13, fontWeight: 600, lineHeight: 1.5 }}>
+                  {curWeek.holidayNote}
+                </div>
+              )}
+            </div>
+
+            {/* 일별 카드 */}
+            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+              {curDays.map((d) => {
+                const f = fmtDate(d.date);
+                const isToday = d.date === today;
+                const { done, total, complete } = dayDoneMap[d.key];
+                const open = openDay === d.key;
+                const dayLogs = logs[d.key] || [];
+                const wc = T[WEEK_COLOR[d.week]];
+
+                return (
+                  <div key={d.key} style={{ ...card(0), padding: 0, overflow: "hidden" }}>
+                    <button
+                      onClick={() => setOpenDay(open ? null : d.key)}
+                      style={{
+                        width: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 14,
+                        padding: "16px 18px",
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        fontFamily: FONT,
+                        textAlign: "left",
+                        color: T.text,
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: 14,
+                          flexShrink: 0,
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          background: isToday ? wc : T.cardSoft,
+                          color: isToday ? "#fff" : T.text,
+                        }}
+                      >
+                        <div style={{ fontSize: 16, fontWeight: 800, lineHeight: 1 }}>{f.day}</div>
+                        <div style={{ fontSize: 11, fontWeight: 600, marginTop: 3, opacity: isToday ? 0.9 : 0.6 }}>
+                          {f.m}월 · {f.dow}
+                        </div>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 15, fontWeight: 700 }}>Day {d.dayNo}</span>
+                          {isToday && <Chip bg={T.blueSoft} fg={T.blue}>오늘</Chip>}
+                          {d.isLast && <Chip bg={T.redSoft} fg={T.red}>TEST</Chip>}
+                          {complete && <Chip bg={T.greenSoft} fg={T.green}>완료</Chip>}
+                        </div>
+                        <div style={{ fontSize: 13, color: T.faint }}>
+                          할 일 {done}/{total}
+                          {dayLogs.length > 0 && ` · 일과 ${dayLogs.length}건`}
+                        </div>
+                      </div>
+                      <span style={{ color: T.faint, fontSize: 13, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }}>▾</span>
+                    </button>
+
+                    {open && (
+                      <div style={{ padding: "0 18px 18px" }}>
+                        <div style={{ height: 1, background: T.line, marginBottom: 14 }} />
+
+                        <div style={{ fontSize: 13, fontWeight: 700, color: T.sub, marginBottom: 8 }}>할 일</div>
+                        {d.tasks.map((t) => {
+                          const k = `${d.key}:${t.id}`;
+                          const on = !!checks[k];
+                          const cs = CAT_STYLE[t.cat];
+                          return (
+                            <button
+                              key={t.id}
+                              onClick={() => toggleTask(d.key, t.id)}
+                              style={{
+                                width: "100%",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 10,
+                                padding: "10px 12px",
+                                marginBottom: 6,
+                                borderRadius: 12,
+                                border: "none",
+                                cursor: "pointer",
+                                fontFamily: FONT,
+                                textAlign: "left",
+                                background: T.cardSoft,
+                                opacity: on ? 0.75 : 1,
+                                transition: "opacity .12s",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  width: 22,
+                                  height: 22,
+                                  borderRadius: 8,
+                                  flexShrink: 0,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  background: on ? T.blue : "transparent",
+                                  border: on ? "none" : `1.5px solid ${T.checkOff}`,
+                                  color: "#fff",
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                }}
+                              >
+                                {on ? "✓" : ""}
+                              </span>
+                              <Chip bg={cs.bg} fg={cs.fg}>{t.cat}</Chip>
+                              <span
+                                style={{
+                                  fontSize: 14,
+                                  fontWeight: 600,
+                                  color: on ? T.faint : T.text,
+                                  textDecoration: on ? "line-through" : "none",
+                                  lineHeight: 1.4,
+                                }}
+                              >
+                                {t.label}
+                              </span>
+                            </button>
+                          );
+                        })}
+
+                        <div style={{ fontSize: 13, fontWeight: 700, color: T.sub, margin: "16px 0 8px" }}>일과표</div>
+                        {dayLogs.length === 0 && (
+                          <div style={{ fontSize: 13, color: T.faint, padding: "4px 2px 8px" }}>
+                            아직 기록이 없어요. 아래에서 오늘 한 일을 시간과 함께 남겨보세요.
+                          </div>
+                        )}
+                        {dayLogs.map((l, i) => (
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 2px", borderBottom: `1px solid ${T.line}` }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: T.blue, width: 46, flexShrink: 0 }}>{l.time}</span>
+                            <span style={{ fontSize: 14, flex: 1, lineHeight: 1.5 }}>{l.text}</span>
+                            <button
+                              onClick={() => removeLog(d.key, i)}
+                              style={{ border: "none", background: "transparent", color: T.faint, cursor: "pointer", fontSize: 13, padding: 4 }}
+                              aria-label="기록 삭제"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                        <LogInput onAdd={(time, text) => addLog(d.key, time, text)} T={T} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {saveState === "error" && (
+          <div style={{ marginTop: 16, padding: "12px 14px", borderRadius: 12, background: T.redSoft, color: T.red, fontSize: 13, fontWeight: 600 }}>
+            저장에 실패했어요. 네트워크 상태를 확인한 뒤 다시 체크해 주세요.
+          </div>
+        )}
+
+        <div style={{ marginTop: 28, textAlign: "center", fontSize: 12, color: T.faint, lineHeight: 1.7 }}>
+          체크·일과 기록·테마는 자동 저장됩니다
+          <br />
+          매주 마지막 날: 독후감 제출 + 프로젝트/도서 TEST · PPT 테스트는 4주차 마지막 날(10/1)
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── 소형 컴포넌트 ── */
+
+function Bar({ pct, h = 8, T }) {
+  return (
+    <div style={{ width: "100%", height: h, borderRadius: h, background: T.cardSoft, overflow: "hidden" }}>
+      <div style={{ width: `${pct}%`, height: "100%", borderRadius: h, background: pct === 100 ? T.green : T.blue, transition: "width .3s ease" }} />
+    </div>
+  );
+}
+
+function Chip({ bg, fg, children }) {
+  return (
+    <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 8, background: bg, color: fg, flexShrink: 0 }}>
+      {children}
+    </span>
+  );
+}
+
+function SummaryRow({ cat, text, last, CAT_STYLE, T }) {
+  const cs = CAT_STYLE[cat];
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: last ? "none" : `1px solid ${T.line}` }}>
+      <Chip bg={cs.bg} fg={cs.fg}>{cat}</Chip>
+      <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4 }}>{text}</span>
+    </div>
+  );
+}
+
+function LogInput({ onAdd, T }) {
+  const [time, setTime] = useState("");
+  const [text, setText] = useState("");
+  const submit = () => {
+    if (!text.trim()) return;
+    onAdd(time, text);
+    setTime("");
+    setText("");
+  };
+  const inputStyle = {
+    fontFamily: FONT,
+    fontSize: 14,
+    border: `1.5px solid ${T.inputBorder}`,
+    borderRadius: 12,
+    padding: "10px 10px",
+    background: T.cardSoft,
+    color: T.text,
+    outline: "none",
+  };
+  return (
+    <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+      <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={{ ...inputStyle, width: 108, colorScheme: "dark light" }} />
+      <input
+        type="text"
+        value={text}
+        placeholder="한 일을 입력하세요"
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && submit()}
+        style={{ ...inputStyle, flex: 1, padding: "10px 12px" }}
+      />
+      <button
+        onClick={submit}
+        style={{
+          fontFamily: FONT,
+          fontSize: 14,
+          fontWeight: 700,
+          border: "none",
+          borderRadius: 12,
+          padding: "10px 16px",
+          background: T.blue,
+          color: "#fff",
+          cursor: "pointer",
+          flexShrink: 0,
+        }}
+      >
+        추가
+      </button>
+    </div>
+  );
+}
+
+
+ReactDOM.createRoot(document.getElementById("root")).render(<TrainingDashboard />);
+</script>
+</body>
+</html>
