@@ -128,6 +128,14 @@ const WEEKS = [
 const HOLIDAYS = { "2026-09-24": "추석 연휴", "2026-09-25": "추석", "2026-09-26": "추석 연휴" };
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 
+// ── 교육 진행 GROUND RULES ────────────────────
+const GROUND_RULES = [
+  { icon: "📝", text: "주별 과제 수행 계획 공유", when: "주차 첫날(수) 오전 11시까지", color: "blue" },
+  { icon: "💬", text: "궁금한 점·어려운 점은 빠르게 커뮤니케이션", when: "상시", color: "green" },
+  { icon: "📤", text: "제출물 제출 — PPT 과제 작성본 · 독후감", when: "주차 마지막 날 오전 10시까지", color: "orange" },
+  { icon: "🧪", text: "TEST 수행 — 프로젝트 · 도서 (4주차는 PPT 포함)", when: "주차 마지막 날 오후 4시", color: "red" },
+];
+
 // 주차별 캘린더 색 (키는 테마 팔레트 이름)
 const WEEK_COLOR = { 1: "blue", 2: "green", 3: "purple", 4: "orange" };
 
@@ -143,10 +151,11 @@ function buildSchedule() {
       ];
       const tests = [];
       if (isLast) {
-        tests.push({ id: "report-book", cat: "제출", label: `독후감 제출 『${w.book}』` });
-        tests.push({ id: "test-proj", cat: "TEST", label: `프로젝트 서술형 TEST (${w.project})` });
-        tests.push({ id: "test-book", cat: "TEST", label: `도서 퀴즈·서술형 TEST (${w.book})` });
-        if (w.no === 4) tests.push({ id: "test-ppt", cat: "TEST", label: "PPT 테스트 (AI 활용)" });
+        tests.push({ id: "report-ppt", cat: "제출", label: "PPT 과제 작성본 제출", time: "~ 오전 10시" });
+        tests.push({ id: "report-book", cat: "제출", label: `독후감 제출 『${w.book}』`, time: "~ 오전 10시" });
+        tests.push({ id: "test-proj", cat: "TEST", label: `프로젝트 서술형 TEST (${w.project})`, time: "오후 4시" });
+        tests.push({ id: "test-book", cat: "TEST", label: `도서 퀴즈·서술형 TEST (${w.book})`, time: "오후 4시" });
+        if (w.no === 4) tests.push({ id: "test-ppt", cat: "TEST", label: "PPT 테스트 (AI 활용)", time: "오후 4시" });
       }
       days.push({
         key: `w${w.no}d${di + 1}`,
@@ -396,6 +405,44 @@ function TrainingDashboard() {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* ── GROUND RULES ── */}
+        <div style={card(12)}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <span style={{ fontSize: 15, fontWeight: 800 }}>교육 진행 GROUND RULES</span>
+          </div>
+          {GROUND_RULES.map((r, i) => (
+            <div
+              key={i}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 0",
+                borderBottom: i === GROUND_RULES.length - 1 ? "none" : `1px solid ${T.line}`,
+              }}
+            >
+              <span style={{ fontSize: 18, flexShrink: 0 }}>{r.icon}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.45 }}>{r.text}</div>
+              </div>
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: T[r.color],
+                  background: T[r.color + "Soft"],
+                  padding: "5px 10px",
+                  borderRadius: 10,
+                  flexShrink: 0,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {r.when}
+              </span>
+            </div>
+          ))}
         </div>
 
         {/* ── 뷰 전환 ── */}
@@ -707,10 +754,16 @@ function TrainingDashboard() {
                                   color: on ? T.faint : T.text,
                                   textDecoration: on ? "line-through" : "none",
                                   lineHeight: 1.4,
+                                  flex: 1,
                                 }}
                               >
                                 {t.label}
                               </span>
+                              {t.time && (
+                                <span style={{ fontSize: 12, fontWeight: 800, color: cs.fg, flexShrink: 0, whiteSpace: "nowrap" }}>
+                                  {t.time}
+                                </span>
+                              )}
                             </button>
                           );
                         })}
@@ -753,7 +806,7 @@ function TrainingDashboard() {
         <div style={{ marginTop: 28, textAlign: "center", fontSize: 12, color: T.faint, lineHeight: 1.7 }}>
           체크·일과 기록·테마는 자동 저장됩니다
           <br />
-          매주 마지막 날: 독후감 제출 + 프로젝트/도서 TEST · PPT 테스트는 4주차 마지막 날(10/1)
+          제출물(PPT 작성본·독후감): 매주 마지막 날 오전 10시까지 · TEST: 매주 마지막 날 오후 4시
         </div>
       </div>
     </div>
