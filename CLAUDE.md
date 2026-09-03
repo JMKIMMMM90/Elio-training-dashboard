@@ -15,9 +15,14 @@ git add → commit → push. 별도 배포 명령 없음.
 
 ## 앱 구조
 - 다크모드 기본(Toss 스타일), THEMES 상수에 팔레트.
-- 데이터는 localStorage 저장(키: training-dashboard-2026). 기기별 저장이며
-  저장 구조를 바꾸면 기존 사용자 기록이 깨지므로 키/구조 변경은 신중히.
-- 화면: 전체 진행률 / GROUND RULES / 달력 뷰(기본) / 주차별 체크 뷰.
+- 데이터는 Firebase Realtime Database에 사람별로 실시간 저장.
+  - 경로: users/<이름>/{checks, logs, joinedAt}. 경로/구조를 바꾸면 전원의 기록이
+    깨지므로 변경은 신중히.
+  - firebaseConfig는 index.html 상단에 있음 (프로젝트: elio-training, 소유: 대표님 구글 계정).
+  - localStorage는 이름(training-dashboard-2026-name)·테마(-theme)만 기기별 저장.
+    예전 키(training-dashboard-2026)의 기록은 최초 접속 시 온라인으로 1회 자동 이전.
+- 첫 화면: 이름 선택(등록된 명단 + 새 이름 입력). 신입·관리자 모두 이름으로 접속.
+- 화면: 전체 진행률 / GROUND RULES / 달력 뷰(기본) / 주차별 체크 뷰 / 전체 현황 뷰(전원 진행률, 실시간).
 
 ## 교육 일정 (WEEKS 상수)
 - 1주차 9/2(수)~9/8(화): PPT 기초 쉐도잉 / [비전전략]울산대병원 / 병원에서 일하는 이유

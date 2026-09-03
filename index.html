@@ -8,6 +8,8 @@
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #101013; }
@@ -20,17 +22,19 @@
 <div id="root"></div>
 <script type="text/babel" data-presets="react">
 
-// GitHub Pages용 저장 어댑터: 브라우저 localStorage 사용 (기기별 저장)
-const storageAdapter = {
-  async get(key) {
-    const v = localStorage.getItem(key);
-    return v === null ? null : { key, value: v };
-  },
-  async set(key, value) {
-    localStorage.setItem(key, value);
-    return { key, value };
-  },
+// Firebase 초기화: 모든 기기가 같은 온라인 저장소를 실시간으로 공유한다
+const firebaseConfig = {
+  apiKey: "AIzaSyBY6TN6UPSDUuKJgMQzoDp5qiQ9rL3yQ7c",
+  authDomain: "elio-training.firebaseapp.com",
+  databaseURL: "https://elio-training-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "elio-training",
+  storageBucket: "elio-training.firebasestorage.app",
+  messagingSenderId: "624801231331",
+  appId: "1:624801231331:web:1fa7a8c651edbee941b0d6",
 };
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
 const { useState, useEffect, useMemo } = React;
 
 /* ─────────────────────────────────────────────
@@ -203,9 +207,243 @@ function buildCalendarRows() {
 }
 const CAL_ROWS = buildCalendarRows();
 
+// 예전 기기별 저장(localStorage) 키 — 최초 접속 시 온라인으로 1회 이전용
 const STORAGE_KEY = "training-dashboard-2026";
+const NAME_KEY = "training-dashboard-2026-name";
+const THEME_KEY = "training-dashboard-2026-theme";
 
-function TrainingDashboard() {
+// checks 객체로 주차별·전체 진행률 계산 (본인 화면·전체 현황 공용)
+function calcStats(checks) {
+  const per = {};
+  let allDone = 0,
+    allTotal = 0;
+  WEEKS.forEach((w) => {
+    let done = 0,
+      total = 0;
+    SCHEDULE.filter((d) => d.week === w.no).forEach((d) => {
+      d.tasks.forEach((t) => {
+        total++;
+        if (checks[`${d.key}:${t.id}`]) done++;
+      });
+    });
+    per[w.no] = { done, total, pct: total ? Math.round((done / total) * 100) : 0 };
+    allDone += done;
+    allTotal += total;
+  });
+  return {
+    per,
+    all: { done: allDone, total: allTotal, pct: allTotal ? Math.round((allDone / allTotal) * 100) : 0 },
+  };
+}
+
+function App() {
+  const [name, setName] = useState(() => {
+    try { return localStorage.getItem(NAME_KEY); } catch { return null; }
+  });
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem(THEME_KEY) || "dark"; } catch { return "dark"; }
+  });
+
+  const switchTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    try { localStorage.setItem(THEME_KEY, next); } catch {}
+  };
+
+  if (!name)
+    return (
+      <NamePicker
+        T={THEMES[theme]}
+        onPick={(n) => {
+          try { localStorage.setItem(NAME_KEY, n); } catch {}
+          setName(n);
+        }}
+      />
+    );
+
+  return (
+    <TrainingDashboard
+      name={name}
+      theme={theme}
+      switchTheme={switchTheme}
+      onChangeName={() => {
+        try { localStorage.removeItem(NAME_KEY); } catch {}
+        setName(null);
+      }}
+    />
+  );
+}
+
+// ── 첫 화면: 이름 선택 ────────────────────────
+function NamePicker({ T, onPick }) {
+  const [names, setNames] = useState(null);
+  const [input, setInput] = useState("");
+
+  useEffect(() => {
+    db.ref("users")
+      .once("value")
+      .then((s) => setNames(Object.keys(s.val() || {}).sort((a, b) => a.localeCompare(b, "ko"))))
+      .catch(() => setNames([]));
+  }, []);
+
+  const submit = () => {
+    const n = input.trim();
+    if (!n) return;
+    if (/[.#$/\[\]]/.test(n)) {
+      alert("이름에 . # $ [ ] / 문자는 쓸 수 없어요.");
+      return;
+    }
+    onPick(n);
+  };
+
+  const inputStyle = {
+    fontFamily: FONT,
+    fontSize: 15,
+    border: `1.5px solid ${T.inputBorder}`,
+    borderRadius: 12,
+    padding: "12px 14px",
+    background: T.cardSoft,
+    color: T.text,
+    outline: "none",
+    flex: 1,
+    minWidth: 0,
+  };
+
+  return (
+    <div style={{ fontFamily: FONT, background: T.bg, minHeight: "100vh", color: T.text, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: T.card, borderRadius: 24, padding: 28, width: "100%", maxWidth: 420 }}>
+        <div style={{ fontSize: 13, color: T.faint, fontWeight: 600, marginBottom: 8 }}>신입교육 프로그램 · 2026.9.2 ~ 10.1</div>
+        <div style={{ fontSize: 21, fontWeight: 800, marginBottom: 8, lineHeight: 1.35 }}>누구의 체크리스트인가요?</div>
+        <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.6, marginBottom: 20 }}>
+          이름을 선택하면 기록이 온라인에 저장돼요.
+          <br />
+          어느 기기에서 접속해도 이어서 볼 수 있어요.
+        </div>
+
+        {names === null && <div style={{ fontSize: 14, color: T.faint, padding: "4px 0 18px" }}>명단 불러오는 중…</div>}
+
+        {names && names.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+            {names.map((n) => (
+              <button
+                key={n}
+                onClick={() => onPick(n)}
+                style={{
+                  fontFamily: FONT,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "13px 16px",
+                  borderRadius: 14,
+                  border: "none",
+                  cursor: "pointer",
+                  background: T.cardSoft,
+                  color: T.text,
+                  fontSize: 15,
+                  fontWeight: 700,
+                  textAlign: "left",
+                }}
+              >
+                <span>👤 {n}</span>
+                <span style={{ color: T.faint }}>›</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div style={{ fontSize: 13, fontWeight: 700, color: T.sub, marginBottom: 8 }}>
+          {names && names.length > 0 ? "명단에 없어요 — 새 이름으로 시작" : "이름을 등록하고 시작하세요"}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            type="text"
+            value={input}
+            placeholder="이름 입력 (예: 홍길동)"
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            style={inputStyle}
+          />
+          <button
+            onClick={submit}
+            style={{
+              fontFamily: FONT,
+              fontSize: 15,
+              fontWeight: 700,
+              border: "none",
+              borderRadius: 12,
+              padding: "12px 18px",
+              background: T.blue,
+              color: "#fff",
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          >
+            시작
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 전체 현황 (전원 진행률, 실시간) ────────────
+function AllView({ T }) {
+  const [users, setUsers] = useState(null);
+
+  useEffect(() => {
+    const ref = db.ref("users");
+    const cb = ref.on(
+      "value",
+      (s) => setUsers(s.val() || {}),
+      () => setUsers({})
+    );
+    return () => ref.off("value", cb);
+  }, []);
+
+  if (users === null)
+    return (
+      <div style={{ background: T.card, borderRadius: 20, padding: 24, textAlign: "center", color: T.faint, fontSize: 14 }}>
+        불러오는 중…
+      </div>
+    );
+
+  const rows = Object.entries(users)
+    .map(([n, v]) => ({ name: n, stats: calcStats((v && v.checks) || {}) }))
+    .sort((a, b) => b.stats.all.pct - a.stats.all.pct || a.name.localeCompare(b.name, "ko"));
+
+  return (
+    <div style={{ background: T.card, borderRadius: 20, padding: 18, boxShadow: T.shadow }}>
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>전체 진행 현황</div>
+      <div style={{ fontSize: 12.5, color: T.faint, marginBottom: 6 }}>총 {rows.length}명 · 체크하는 즉시 실시간으로 갱신돼요</div>
+      {rows.length === 0 && (
+        <div style={{ fontSize: 14, color: T.faint, padding: "12px 0" }}>아직 등록된 사람이 없어요.</div>
+      )}
+      {rows.map((r, i) => (
+        <div key={r.name} style={{ padding: "13px 0", borderBottom: i === rows.length - 1 ? "none" : `1px solid ${T.line}` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+            <span style={{ fontSize: 14.5, fontWeight: 700 }}>👤 {r.name}</span>
+            <span style={{ fontSize: 14, fontWeight: 800, color: r.stats.all.pct === 100 ? T.green : T.blue }}>
+              {r.stats.all.pct}% <span style={{ fontSize: 11.5, fontWeight: 600, color: T.faint }}>({r.stats.all.done}/{r.stats.all.total})</span>
+            </span>
+          </div>
+          <Bar pct={r.stats.all.pct} h={8} T={T} />
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            {WEEKS.map((w) => (
+              <div key={w.no} style={{ flex: 1, textAlign: "center", fontSize: 11.5, color: T.faint }}>
+                {w.no}주{" "}
+                <span style={{ fontWeight: 800, color: r.stats.per[w.no].pct === 100 ? T.green : T.sub }}>
+                  {r.stats.per[w.no].pct}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   const today = todayStr();
   const todayIdx = SCHEDULE.findIndex((d) => d.date === today);
   const defaultWeek =
@@ -217,9 +455,8 @@ function TrainingDashboard() {
       ? 4
       : SCHEDULE.find((d) => d.date >= today)?.week ?? 1;
 
-  const [theme, setTheme] = useState("dark");
   const T = THEMES[theme];
-  const [view, setView] = useState("calendar"); // calendar | week
+  const [view, setView] = useState("calendar"); // calendar | week | all
   const [week, setWeek] = useState(defaultWeek);
   const [checks, setChecks] = useState({});
   const [logs, setLogs] = useState({});
@@ -235,42 +472,62 @@ function TrainingDashboard() {
     TEST: { bg: T.redSoft, fg: T.red },
   };
 
-  // ── 저장 데이터 로드 ──
+  // ── 내 데이터 실시간 구독 (다른 기기에서 바꿔도 즉시 반영) ──
   useEffect(() => {
-    (async () => {
-      try {
-        const r = await storageAdapter.get(STORAGE_KEY);
-        if (r?.value) {
-          const p = JSON.parse(r.value);
-          setChecks(p.checks || {});
-          setLogs(p.logs || {});
-          if (p.theme) setTheme(p.theme);
+    const ref = db.ref("users/" + name);
+    let migrated = false;
+    const cb = ref.on(
+      "value",
+      (snap) => {
+        const v = snap.val();
+        if (v) {
+          setChecks(v.checks || {});
+          setLogs(v.logs || {});
+        } else if (!migrated) {
+          migrated = true;
+          // 예전 기기별 저장(localStorage) 기록이 있으면 온라인으로 1회 이전
+          let old = null;
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) old = JSON.parse(raw);
+          } catch {}
+          if (old && (old.checks || old.logs)) {
+            ref.set({ checks: old.checks || {}, logs: old.logs || {}, joinedAt: Date.now() })
+              .catch(() => setSaveState("error"));
+            return; // 저장되면 구독이 다시 호출된다
+          }
+          // 새 이름 등록 (전체 현황·이름 목록에 나타나도록)
+          ref.child("joinedAt").set(Date.now()).catch(() => setSaveState("error"));
+          setChecks({});
+          setLogs({});
         }
-      } catch (e) {
-        /* 저장 데이터 없음 */
+        setLoaded(true);
+      },
+      () => {
+        setSaveState("error");
+        setLoaded(true);
       }
-      setLoaded(true);
-    })();
-  }, []);
-
-  const persist = async (nextChecks, nextLogs, nextTheme) => {
-    setSaveState("saving");
-    try {
-      const r = await storageAdapter.set(
-        STORAGE_KEY,
-        JSON.stringify({ checks: nextChecks, logs: nextLogs, theme: nextTheme })
-      );
-      setSaveState(r ? "idle" : "error");
-    } catch {
-      setSaveState("error");
-    }
-  };
+    );
+    return () => ref.off("value", cb);
+  }, [name]);
 
   const toggleTask = (dayKey, taskId) => {
     const k = `${dayKey}:${taskId}`;
-    const next = { ...checks, [k]: !checks[k] };
-    setChecks(next);
-    persist(next, logs, theme);
+    const next = !checks[k];
+    setChecks({ ...checks, [k]: next });
+    setSaveState("saving");
+    db.ref(`users/${name}/checks/${k}`)
+      .set(next)
+      .then(() => setSaveState("idle"))
+      .catch(() => setSaveState("error"));
+  };
+
+  const saveLogs = (dayKey, list) => {
+    setSaveState("saving");
+    db.ref(`users/${name}/logs/${dayKey}`)
+      .set(list)
+      .then(() => setSaveState("idle"))
+      .catch(() => setSaveState("error"));
   };
 
   const addLog = (dayKey, time, text) => {
@@ -278,47 +535,18 @@ function TrainingDashboard() {
     const list = logs[dayKey] ? [...logs[dayKey]] : [];
     list.push({ time: time || "--:--", text: text.trim() });
     list.sort((a, b) => a.time.localeCompare(b.time));
-    const next = { ...logs, [dayKey]: list };
-    setLogs(next);
-    persist(checks, next, theme);
+    setLogs({ ...logs, [dayKey]: list });
+    saveLogs(dayKey, list);
   };
 
   const removeLog = (dayKey, idx) => {
     const list = logs[dayKey].filter((_, i) => i !== idx);
-    const next = { ...logs, [dayKey]: list };
-    setLogs(next);
-    persist(checks, next, theme);
-  };
-
-  const switchTheme = () => {
-    const next = theme === "dark" ? "light" : "dark";
-    setTheme(next);
-    persist(checks, logs, next);
+    setLogs({ ...logs, [dayKey]: list });
+    saveLogs(dayKey, list);
   };
 
   // ── 진행률 ──
-  const stats = useMemo(() => {
-    const per = {};
-    let allDone = 0,
-      allTotal = 0;
-    WEEKS.forEach((w) => {
-      let done = 0,
-        total = 0;
-      SCHEDULE.filter((d) => d.week === w.no).forEach((d) => {
-        d.tasks.forEach((t) => {
-          total++;
-          if (checks[`${d.key}:${t.id}`]) done++;
-        });
-      });
-      per[w.no] = { done, total, pct: total ? Math.round((done / total) * 100) : 0 };
-      allDone += done;
-      allTotal += total;
-    });
-    return {
-      per,
-      all: { done: allDone, total: allTotal, pct: allTotal ? Math.round((allDone / allTotal) * 100) : 0 },
-    };
-  }, [checks]);
+  const stats = useMemo(() => calcStats(checks), [checks]);
 
   const dayDoneMap = useMemo(() => {
     const m = {};
@@ -365,26 +593,44 @@ function TrainingDashboard() {
               신입교육 프로그램 · 2026.9.2(수) ~ 10.1(목)
             </div>
             <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.5px", lineHeight: 1.3 }}>
-              4주 교육, 지금 <span style={{ color: T.blue }}>{stats.all.pct}%</span> 왔어요
+              {name}님, 지금 <span style={{ color: T.blue }}>{stats.all.pct}%</span> 왔어요
             </div>
           </div>
-          <button
-            onClick={switchTheme}
-            aria-label="테마 전환"
-            style={{
-              border: "none",
-              cursor: "pointer",
-              fontFamily: FONT,
-              fontSize: 13,
-              fontWeight: 700,
-              padding: "8px 12px",
-              borderRadius: 12,
-              background: T.card,
-              color: T.sub,
-            }}
-          >
-            {theme === "dark" ? "☀️ 라이트" : "🌙 다크"}
-          </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", flexShrink: 0 }}>
+            <button
+              onClick={switchTheme}
+              aria-label="테마 전환"
+              style={{
+                border: "none",
+                cursor: "pointer",
+                fontFamily: FONT,
+                fontSize: 13,
+                fontWeight: 700,
+                padding: "8px 12px",
+                borderRadius: 12,
+                background: T.card,
+                color: T.sub,
+              }}
+            >
+              {theme === "dark" ? "☀️ 라이트" : "🌙 다크"}
+            </button>
+            <button
+              onClick={onChangeName}
+              style={{
+                border: "none",
+                cursor: "pointer",
+                fontFamily: FONT,
+                fontSize: 12,
+                fontWeight: 600,
+                padding: "5px 8px",
+                borderRadius: 10,
+                background: "transparent",
+                color: T.faint,
+              }}
+            >
+              👤 이름 변경
+            </button>
+          </div>
         </div>
 
         {/* ── 전체 진행률 ── */}
@@ -448,8 +694,9 @@ function TrainingDashboard() {
         {/* ── 뷰 전환 ── */}
         <div style={{ display: "flex", gap: 8, margin: "20px 0 16px", background: T.card, borderRadius: 14, padding: 4 }}>
           {[
-            { id: "calendar", label: "📅 전체 달력" },
-            { id: "week", label: "✅ 주차별 체크" },
+            { id: "calendar", label: "📅 달력" },
+            { id: "week", label: "✅ 주차별" },
+            { id: "all", label: "👥 전체 현황" },
           ].map((v) => {
             const active = view === v.id;
             return (
@@ -797,14 +1044,17 @@ function TrainingDashboard() {
           </>
         )}
 
+        {/* ══════════ 전체 현황 뷰 ══════════ */}
+        {view === "all" && <AllView T={T} />}
+
         {saveState === "error" && (
           <div style={{ marginTop: 16, padding: "12px 14px", borderRadius: 12, background: T.redSoft, color: T.red, fontSize: 13, fontWeight: 600 }}>
-            저장에 실패했어요. 네트워크 상태를 확인한 뒤 다시 체크해 주세요.
+            저장에 실패했어요. 인터넷 연결을 확인한 뒤 다시 체크해 주세요.
           </div>
         )}
 
         <div style={{ marginTop: 28, textAlign: "center", fontSize: 12, color: T.faint, lineHeight: 1.7 }}>
-          체크·일과 기록·테마는 자동 저장됩니다
+          체크·일과 기록은 온라인에 자동 저장돼요 — 어느 기기에서 접속해도 같은 기록이 보여요
           <br />
           제출물(PPT 작성본·독후감): 매주 마지막 날 오전 10시까지 · TEST: 매주 마지막 날 오후 4시
         </div>
@@ -893,7 +1143,7 @@ function LogInput({ onAdd, T }) {
 }
 
 
-ReactDOM.createRoot(document.getElementById("root")).render(<TrainingDashboard />);
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
 </html>
