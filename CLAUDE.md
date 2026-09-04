@@ -16,8 +16,13 @@ git add → commit → push. 별도 배포 명령 없음.
 ## 앱 구조
 - 다크모드 기본(Toss 스타일), THEMES 상수에 팔레트.
 - 데이터는 Firebase Realtime Database에 사람별로 실시간 저장.
-  - 경로: users/<이름>/{checks, logs, joinedAt}. 경로/구조를 바꾸면 전원의 기록이
+  - 경로: users/<이름>/{checks, logs, goals, joinedAt}. 경로/구조를 바꾸면 전원의 기록이
     깨지므로 변경은 신중히.
+  - goals: 하루 목표(신입 자율 입력). goals/<dayKey>/<ppt|proj|book> = 목표 배열.
+    수량형 {text, target, actual}(초과달성 가능, 집계는 100% 캡) / 체크형 {text, done}.
+    목표가 있는 영역은 목표 평균으로, 없으면 기존 checks 체크로 점수 계산(taskScore).
+  - WEEK_TARGETS 상수(index.html): 주차별 총 목표량(예: 1주차 PPT 98장). 대표님이
+    숫자를 주면 세팅 — 주차 학습 내용 카드에 "계획 합계 vs 목표" 비교가 표시됨.
   - firebaseConfig는 index.html 상단에 있음 (프로젝트: elio-training, 소유: 대표님 구글 계정).
   - localStorage는 이름(training-dashboard-2026-name)·테마(-theme)만 기기별 저장.
     예전 키(training-dashboard-2026)의 기록은 최초 접속 시 온라인으로 1회 자동 이전.

@@ -16,6 +16,8 @@
   button:hover { filter: brightness(1.08); }
   button:focus-visible { outline: 2px solid #4593FC; outline-offset: 2px; }
   input:focus { border-color: #4593FC !important; }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 </style>
 </head>
 <body>
@@ -143,6 +145,14 @@ const GROUND_RULES = [
 // 주차별 캘린더 색 (키는 테마 팔레트 이름)
 const WEEK_COLOR = { 1: "blue", 2: "green", 3: "purple", 4: "orange" };
 
+// 하루 목표를 세울 수 있는 3개 영역 (제출·TEST는 고정 체크 유지)
+const AREA_IDS = ["ppt", "proj", "book"];
+const AREA_LABEL = { ppt: "PPT", proj: "프로젝트", book: "도서" };
+
+// 주차별 총 목표량 — 대표님이 정해주는 값. 숫자를 넣으면 계획 합계와 비교 표시.
+// 예: 1: { ppt: 98 }  → "1주차 PPT 주차 목표 98 · 계획 합계 80 — 18 부족"
+const WEEK_TARGETS = { 1: {}, 2: {}, 3: {}, 4: {} };
+
 function buildSchedule() {
   const days = [];
   WEEKS.forEach((w, wi) => {
@@ -212,8 +222,36 @@ const STORAGE_KEY = "training-dashboard-2026";
 const NAME_KEY = "training-dashboard-2026-name";
 const THEME_KEY = "training-dashboard-2026-theme";
 
-// checks 객체로 주차별·전체 진행률 계산 (본인 화면·전체 현황 공용)
-function calcStats(checks) {
+// Firebase에서 온 목표 리스트를 배열로 정규화
+const asList = (x) => (Array.isArray(x) ? x : x ? Object.values(x) : []);
+
+// 목표 1건의 진척 (집계용, 100% 캡)
+function goalProgress(g) {
+  if (g.target > 0) return Math.min(1, (g.actual || 0) / g.target);
+  return g.done ? 1 : 0;
+}
+
+// 목표 1건의 표시용 % (초과달성 그대로)
+function goalRawPct(g) {
+  if (g.target > 0) return Math.round(((g.actual || 0) / g.target) * 100);
+  return g.done ? 100 : 0;
+}
+
+// 영역(PPT/프로젝트/도서) 점수: 목표가 있으면 목표 평균, 없으면 기존 체크
+function areaScore(checks, goals, dayKey, areaId) {
+  const list = asList(goals[dayKey] && goals[dayKey][areaId]);
+  if (list.length === 0) return checks[`${dayKey}:${areaId}`] ? 1 : 0;
+  return list.reduce((s, g) => s + goalProgress(g), 0) / list.length;
+}
+
+function taskScore(checks, goals, day, task) {
+  if (AREA_IDS.includes(task.id)) return areaScore(checks, goals, day.key, task.id);
+  return checks[`${day.key}:${task.id}`] ? 1 : 0;
+}
+
+// checks+goals로 주차별·전체 진행률 계산 (본인 화면·전체 현황 공용)
+function calcStats(checks, goals) {
+  goals = goals || {};
   const per = {};
   let allDone = 0,
     allTotal = 0;
@@ -223,7 +261,7 @@ function calcStats(checks) {
     SCHEDULE.filter((d) => d.week === w.no).forEach((d) => {
       d.tasks.forEach((t) => {
         total++;
-        if (checks[`${d.key}:${t.id}`]) done++;
+        done += taskScore(checks, goals, d, t);
       });
     });
     per[w.no] = { done, total, pct: total ? Math.round((done / total) * 100) : 0 };
@@ -234,6 +272,16 @@ function calcStats(checks) {
     per,
     all: { done: allDone, total: allTotal, pct: allTotal ? Math.round((allDone / allTotal) * 100) : 0 },
   };
+}
+
+// 오늘이 속한(또는 다음) 주차
+function currentWeekNo(today) {
+  const d = DAY_BY_DATE[today];
+  if (d) return d.week;
+  if (today < SCHEDULE[0].date) return 1;
+  if (today > SCHEDULE[SCHEDULE.length - 1].date) return 4;
+  const next = SCHEDULE.find((x) => x.date >= today);
+  return next ? next.week : 1;
 }
 
 function App() {
@@ -407,8 +455,21 @@ function AllView({ T }) {
       </div>
     );
 
+  const today = todayStr();
+  const todayD = DAY_BY_DATE[today] || null;
+  const wkNo = currentWeekNo(today);
+  const wkDays = SCHEDULE.filter((d) => d.week === wkNo);
+
   const rows = Object.entries(users)
-    .map(([n, v]) => ({ name: n, stats: calcStats((v && v.checks) || {}) }))
+    .map(([n, v]) => {
+      const checks = (v && v.checks) || {};
+      const goals = (v && v.goals) || {};
+      const todayPct = todayD
+        ? Math.round((todayD.tasks.reduce((s, t) => s + taskScore(checks, goals, todayD, t), 0) / todayD.tasks.length) * 100)
+        : null;
+      const planned = wkDays.some((d) => AREA_IDS.some((a) => asList(goals[d.key] && goals[d.key][a]).length > 0));
+      return { name: n, stats: calcStats(checks, goals), todayPct, planned };
+    })
     .sort((a, b) => b.stats.all.pct - a.stats.all.pct || a.name.localeCompare(b.name, "ko"));
 
   return (
@@ -420,11 +481,27 @@ function AllView({ T }) {
       )}
       {rows.map((r, i) => (
         <div key={r.name} style={{ padding: "13px 0", borderBottom: i === rows.length - 1 ? "none" : `1px solid ${T.line}` }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
             <span style={{ fontSize: 14.5, fontWeight: 700 }}>👤 {r.name}</span>
             <span style={{ fontSize: 14, fontWeight: 800, color: r.stats.all.pct === 100 ? T.green : T.blue }}>
-              {r.stats.all.pct}% <span style={{ fontSize: 11.5, fontWeight: 600, color: T.faint }}>({r.stats.all.done}/{r.stats.all.total})</span>
+              {r.stats.all.pct}%{" "}
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: T.faint }}>
+                ({Math.round(r.stats.all.done)}/{r.stats.all.total})
+              </span>
             </span>
+          </div>
+          <div style={{ fontSize: 12, color: T.faint, marginBottom: 8 }}>
+            {r.todayPct !== null && (
+              <span>
+                오늘{" "}
+                <span style={{ fontWeight: 800, color: r.todayPct >= 100 ? T.green : r.todayPct > 0 ? T.blue : T.faint }}>
+                  {r.todayPct}%
+                </span>
+                {" · "}
+              </span>
+            )}
+            이번주 계획{" "}
+            <span style={{ fontWeight: 800, color: r.planned ? T.green : T.orange }}>{r.planned ? "세움 ✓" : "아직"}</span>
           </div>
           <Bar pct={r.stats.all.pct} h={8} T={T} />
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
@@ -446,21 +523,16 @@ function AllView({ T }) {
 function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   const today = todayStr();
   const todayIdx = SCHEDULE.findIndex((d) => d.date === today);
-  const defaultWeek =
-    todayIdx >= 0
-      ? SCHEDULE[todayIdx].week
-      : today < SCHEDULE[0].date
-      ? 1
-      : today > SCHEDULE[SCHEDULE.length - 1].date
-      ? 4
-      : SCHEDULE.find((d) => d.date >= today)?.week ?? 1;
+  const defaultWeek = currentWeekNo(today);
 
   const T = THEMES[theme];
   const [view, setView] = useState("calendar"); // calendar | week | all
   const [week, setWeek] = useState(defaultWeek);
   const [checks, setChecks] = useState({});
   const [logs, setLogs] = useState({});
+  const [goals, setGoals] = useState({});
   const [openDay, setOpenDay] = useState(todayIdx >= 0 ? SCHEDULE[todayIdx].key : null);
+  const [addGoalFor, setAddGoalFor] = useState(null); // "dayKey:areaId"
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState("idle");
 
@@ -483,6 +555,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
         if (v) {
           setChecks(v.checks || {});
           setLogs(v.logs || {});
+          setGoals(v.goals || {});
         } else if (!migrated) {
           migrated = true;
           // 예전 기기별 저장(localStorage) 기록이 있으면 온라인으로 1회 이전
@@ -500,6 +573,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           ref.child("joinedAt").set(Date.now()).catch(() => setSaveState("error"));
           setChecks({});
           setLogs({});
+          setGoals({});
         }
         setLoaded(true);
       },
@@ -520,6 +594,39 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
       .set(next)
       .then(() => setSaveState("idle"))
       .catch(() => setSaveState("error"));
+  };
+
+  // ── 하루 목표 (goals) ──
+  const saveGoals = (dayKey, areaId, list) => {
+    setGoals({ ...goals, [dayKey]: { ...(goals[dayKey] || {}), [areaId]: list } });
+    setSaveState("saving");
+    db.ref(`users/${name}/goals/${dayKey}/${areaId}`)
+      .set(list)
+      .then(() => setSaveState("idle"))
+      .catch(() => setSaveState("error"));
+  };
+
+  const addGoal = (dayKey, areaId, text, target) => {
+    const list = [...asList(goals[dayKey] && goals[dayKey][areaId])];
+    list.push(target > 0 ? { text, target, actual: 0 } : { text, done: false });
+    saveGoals(dayKey, areaId, list);
+  };
+
+  const toggleGoal = (dayKey, areaId, idx) => {
+    const list = [...asList(goals[dayKey] && goals[dayKey][areaId])];
+    list[idx] = { ...list[idx], done: !list[idx].done };
+    saveGoals(dayKey, areaId, list);
+  };
+
+  const setGoalActual = (dayKey, areaId, idx, actual) => {
+    const list = [...asList(goals[dayKey] && goals[dayKey][areaId])];
+    list[idx] = { ...list[idx], actual };
+    saveGoals(dayKey, areaId, list);
+  };
+
+  const removeGoal = (dayKey, areaId, idx) => {
+    const list = asList(goals[dayKey] && goals[dayKey][areaId]).filter((_, i) => i !== idx);
+    saveGoals(dayKey, areaId, list);
   };
 
   const saveLogs = (dayKey, list) => {
@@ -546,16 +653,19 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   };
 
   // ── 진행률 ──
-  const stats = useMemo(() => calcStats(checks), [checks]);
+  const stats = useMemo(() => calcStats(checks, goals), [checks, goals]);
 
   const dayDoneMap = useMemo(() => {
     const m = {};
     SCHEDULE.forEach((d) => {
-      const done = d.tasks.filter((t) => checks[`${d.key}:${t.id}`]).length;
-      m[d.key] = { done, total: d.tasks.length, complete: done === d.tasks.length };
+      let doneCount = 0;
+      d.tasks.forEach((t) => {
+        if (taskScore(checks, goals, d, t) >= 0.999) doneCount++;
+      });
+      m[d.key] = { done: doneCount, total: d.tasks.length, complete: doneCount === d.tasks.length };
     });
     return m;
-  }, [checks]);
+  }, [checks, goals]);
 
   const goDay = (dateStr) => {
     const d = DAY_BY_DATE[dateStr];
@@ -567,6 +677,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
 
   const curWeek = WEEKS.find((w) => w.no === week);
   const curDays = SCHEDULE.filter((d) => d.week === week);
+  const weekHasPlan = curDays.some((d) => AREA_IDS.some((a) => asList(goals[d.key] && goals[d.key][a]).length > 0));
 
   const card = (mt = 0) => ({
     background: T.card,
@@ -637,7 +748,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
         <div style={card()}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
             <span style={{ fontSize: 15, fontWeight: 700 }}>전체 진행률</span>
-            <span style={{ fontSize: 13, color: T.faint }}>{stats.all.done} / {stats.all.total} 완료</span>
+            <span style={{ fontSize: 13, color: T.faint }}>{Math.round(stats.all.done)} / {stats.all.total} 완료</span>
           </div>
           <Bar pct={stats.all.pct} h={10} T={T} />
           <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
@@ -867,6 +978,14 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               })}
             </div>
 
+            {/* 계획 세우기 안내 (이번 주에 목표가 하나도 없을 때) */}
+            {week === defaultWeek && !weekHasPlan && (
+              <div style={{ marginBottom: 16, padding: "12px 14px", borderRadius: 14, background: T.blueSoft, color: T.blue, fontSize: 13, fontWeight: 700, lineHeight: 1.6 }}>
+                📝 이번 주 계획을 세워주세요 — 아래 Day 카드를 열고 "＋ 목표"로 하루 목표를 입력하세요
+                <span style={{ fontWeight: 600, opacity: 0.85 }}> (주차 첫날 오전 11시까지)</span>
+              </div>
+            )}
+
             {/* 주차 커리큘럼 요약 */}
             <div style={card()}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
@@ -875,7 +994,40 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               </div>
               <SummaryRow cat="PPT" text={curWeek.ppt} CAT_STYLE={CAT_STYLE} T={T} />
               <SummaryRow cat="프로젝트" text={curWeek.project} CAT_STYLE={CAT_STYLE} T={T} />
-              <SummaryRow cat="도서" text={`『${curWeek.book}』`} last={!curWeek.holidayNote} CAT_STYLE={CAT_STYLE} T={T} />
+              <SummaryRow cat="도서" text={`『${curWeek.book}』`} last CAT_STYLE={CAT_STYLE} T={T} />
+
+              {/* 주차 총량 vs 계획 합계 (WEEK_TARGETS에 숫자가 세팅된 영역만) */}
+              {AREA_IDS.filter((a) => (WEEK_TARGETS[week] || {})[a] > 0).map((a) => {
+                const target = WEEK_TARGETS[week][a];
+                const planSum = curDays.reduce(
+                  (s, d) => s + asList(goals[d.key] && goals[d.key][a]).reduce((x, g) => x + (g.target > 0 ? g.target : 0), 0),
+                  0
+                );
+                const actualSum = curDays.reduce(
+                  (s, d) => s + asList(goals[d.key] && goals[d.key][a]).reduce((x, g) => x + (g.target > 0 ? g.actual || 0 : 0), 0),
+                  0
+                );
+                const short = planSum < target;
+                return (
+                  <div
+                    key={a}
+                    style={{
+                      marginTop: 8,
+                      padding: "9px 12px",
+                      borderRadius: 12,
+                      background: short ? T.orangeSoft : T.greenSoft,
+                      color: short ? T.orange : T.green,
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {AREA_LABEL[a]} 주차 목표 {target} · 계획 합계 {planSum}
+                    {short ? ` — ${target - planSum} 부족한 계획이에요` : " ✓"} · 지금까지 달성 {actualSum}
+                  </div>
+                );
+              })}
+
               {curWeek.holidayNote && (
                 <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 12, background: T.orangeSoft, color: T.orange, fontSize: 13, fontWeight: 600, lineHeight: 1.5 }}>
                   {curWeek.holidayNote}
@@ -951,67 +1103,146 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
 
                         <div style={{ fontSize: 13, fontWeight: 700, color: T.sub, marginBottom: 8 }}>할 일</div>
                         {d.tasks.map((t) => {
-                          const k = `${d.key}:${t.id}`;
-                          const on = !!checks[k];
                           const cs = CAT_STYLE[t.cat];
-                          return (
-                            <button
-                              key={t.id}
-                              onClick={() => toggleTask(d.key, t.id)}
-                              style={{
-                                width: "100%",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 10,
-                                padding: "10px 12px",
-                                marginBottom: 6,
-                                borderRadius: 12,
-                                border: "none",
-                                cursor: "pointer",
-                                fontFamily: FONT,
-                                textAlign: "left",
-                                background: T.cardSoft,
-                                opacity: on ? 0.75 : 1,
-                                transition: "opacity .12s",
-                              }}
-                            >
-                              <span
+
+                          // ── 제출·TEST: 기존 고정 체크 ──
+                          if (!AREA_IDS.includes(t.id)) {
+                            const k = `${d.key}:${t.id}`;
+                            const on = !!checks[k];
+                            return (
+                              <button
+                                key={t.id}
+                                onClick={() => toggleTask(d.key, t.id)}
                                 style={{
-                                  width: 22,
-                                  height: 22,
-                                  borderRadius: 8,
-                                  flexShrink: 0,
+                                  width: "100%",
                                   display: "flex",
                                   alignItems: "center",
-                                  justifyContent: "center",
-                                  background: on ? T.blue : "transparent",
-                                  border: on ? "none" : `1.5px solid ${T.checkOff}`,
-                                  color: "#fff",
-                                  fontSize: 12,
-                                  fontWeight: 800,
+                                  gap: 10,
+                                  padding: "10px 12px",
+                                  marginBottom: 6,
+                                  borderRadius: 12,
+                                  border: "none",
+                                  cursor: "pointer",
+                                  fontFamily: FONT,
+                                  textAlign: "left",
+                                  background: T.cardSoft,
+                                  opacity: on ? 0.75 : 1,
+                                  transition: "opacity .12s",
                                 }}
                               >
-                                {on ? "✓" : ""}
-                              </span>
-                              <Chip bg={cs.bg} fg={cs.fg}>{t.cat}</Chip>
-                              <span
-                                style={{
-                                  fontSize: 14,
-                                  fontWeight: 600,
-                                  color: on ? T.faint : T.text,
-                                  textDecoration: on ? "line-through" : "none",
-                                  lineHeight: 1.4,
-                                  flex: 1,
-                                }}
-                              >
-                                {t.label}
-                              </span>
-                              {t.time && (
-                                <span style={{ fontSize: 12, fontWeight: 800, color: cs.fg, flexShrink: 0, whiteSpace: "nowrap" }}>
-                                  {t.time}
+                                <CheckBox on={on} T={T} />
+                                <Chip bg={cs.bg} fg={cs.fg}>{t.cat}</Chip>
+                                <span
+                                  style={{
+                                    fontSize: 14,
+                                    fontWeight: 600,
+                                    color: on ? T.faint : T.text,
+                                    textDecoration: on ? "line-through" : "none",
+                                    lineHeight: 1.4,
+                                    flex: 1,
+                                  }}
+                                >
+                                  {t.label}
                                 </span>
+                                {t.time && (
+                                  <span style={{ fontSize: 12, fontWeight: 800, color: cs.fg, flexShrink: 0, whiteSpace: "nowrap" }}>
+                                    {t.time}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          }
+
+                          // ── PPT/프로젝트/도서: 하루 목표 블록 ──
+                          const list = asList(goals[d.key] && goals[d.key][t.id]);
+                          const hasGoals = list.length > 0;
+                          const score = areaScore(checks, goals, d.key, t.id);
+                          const areaPct = Math.round(score * 100);
+                          const addKey = `${d.key}:${t.id}`;
+                          const k = `${d.key}:${t.id}`;
+                          const on = !!checks[k];
+
+                          return (
+                            <div key={t.id} style={{ marginBottom: 6, borderRadius: 12, background: T.cardSoft, padding: "10px 12px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                {!hasGoals ? (
+                                  <button
+                                    onClick={() => toggleTask(d.key, t.id)}
+                                    aria-label="완료 체크"
+                                    style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, display: "flex" }}
+                                  >
+                                    <CheckBox on={on} T={T} />
+                                  </button>
+                                ) : (
+                                  <span
+                                    style={{
+                                      fontSize: 11,
+                                      fontWeight: 800,
+                                      color: areaPct >= 100 ? "#fff" : cs.fg,
+                                      background: areaPct >= 100 ? T.green : cs.bg,
+                                      borderRadius: 8,
+                                      padding: "3px 6px",
+                                      flexShrink: 0,
+                                      minWidth: 38,
+                                      textAlign: "center",
+                                    }}
+                                  >
+                                    {areaPct >= 100 ? "✓" : `${areaPct}%`}
+                                  </span>
+                                )}
+                                <Chip bg={cs.bg} fg={cs.fg}>{t.cat}</Chip>
+                                <span
+                                  style={{
+                                    fontSize: 14,
+                                    fontWeight: 600,
+                                    color: (hasGoals ? areaPct >= 100 : on) ? T.faint : T.text,
+                                    textDecoration: !hasGoals && on ? "line-through" : "none",
+                                    lineHeight: 1.4,
+                                    flex: 1,
+                                    minWidth: 0,
+                                  }}
+                                >
+                                  {t.label}
+                                </span>
+                                <button
+                                  onClick={() => setAddGoalFor(addGoalFor === addKey ? null : addKey)}
+                                  style={{
+                                    border: "none",
+                                    cursor: "pointer",
+                                    fontFamily: FONT,
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    padding: "5px 9px",
+                                    borderRadius: 9,
+                                    background: addGoalFor === addKey ? cs.bg : "transparent",
+                                    color: cs.fg,
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  ＋ 목표
+                                </button>
+                              </div>
+
+                              {hasGoals && (
+                                <div style={{ marginTop: 8 }}>
+                                  {list.map((g, gi) => (
+                                    <GoalRow
+                                      key={gi}
+                                      g={g}
+                                      T={T}
+                                      accent={cs.fg}
+                                      onToggle={() => toggleGoal(d.key, t.id, gi)}
+                                      onActual={(n) => setGoalActual(d.key, t.id, gi, n)}
+                                      onRemove={() => removeGoal(d.key, t.id, gi)}
+                                    />
+                                  ))}
+                                </div>
                               )}
-                            </button>
+
+                              {addGoalFor === addKey && (
+                                <AddGoalRow T={T} onAdd={(text, target) => addGoal(d.key, t.id, text, target)} />
+                              )}
+                            </div>
                           );
                         })}
 
@@ -1054,7 +1285,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
         )}
 
         <div style={{ marginTop: 28, textAlign: "center", fontSize: 12, color: T.faint, lineHeight: 1.7 }}>
-          체크·일과 기록은 온라인에 자동 저장돼요 — 어느 기기에서 접속해도 같은 기록이 보여요
+          체크·목표·일과 기록은 온라인에 자동 저장돼요 — 어느 기기에서 접속해도 같은 기록이 보여요
           <br />
           제출물(PPT 작성본·독후감): 매주 마지막 날 오전 10시까지 · TEST: 매주 마지막 날 오후 4시
         </div>
@@ -1065,10 +1296,197 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
 
 /* ── 소형 컴포넌트 ── */
 
+function CheckBox({ on, T }) {
+  return (
+    <span
+      style={{
+        width: 22,
+        height: 22,
+        borderRadius: 8,
+        flexShrink: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: on ? T.blue : "transparent",
+        border: on ? "none" : `1.5px solid ${T.checkOff}`,
+        color: "#fff",
+        fontSize: 12,
+        fontWeight: 800,
+      }}
+    >
+      {on ? "✓" : ""}
+    </span>
+  );
+}
+
+// 하루 목표 한 줄: 수량형(목표수 있음)은 달성 수 입력, 체크형은 체크
+function GoalRow({ g, T, accent, onToggle, onActual, onRemove }) {
+  const isCount = g.target > 0;
+  const pct = goalRawPct(g);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0 7px 2px", borderTop: `1px solid ${T.line}` }}>
+      {isCount ? (
+        <>
+          <span style={{ fontSize: 13.5, fontWeight: 600, flex: 1, minWidth: 0, lineHeight: 1.4, color: pct >= 100 ? T.faint : T.text }}>
+            {g.text}
+          </span>
+          <CountInput value={g.actual || 0} onCommit={onActual} T={T} />
+          <span style={{ fontSize: 12.5, color: T.faint, flexShrink: 0 }}>/ {g.target}</span>
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              flexShrink: 0,
+              width: 74,
+              textAlign: "right",
+              color: pct > 100 ? T.orange : pct >= 100 ? T.green : accent,
+            }}
+          >
+            {pct > 100 ? `${pct}% 🔥초과` : `${pct}%`}
+          </span>
+        </>
+      ) : (
+        <>
+          <button
+            onClick={onToggle}
+            aria-label="목표 체크"
+            style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, display: "flex", flexShrink: 0 }}
+          >
+            <CheckBox on={!!g.done} T={T} />
+          </button>
+          <span
+            style={{
+              fontSize: 13.5,
+              fontWeight: 600,
+              flex: 1,
+              minWidth: 0,
+              lineHeight: 1.4,
+              color: g.done ? T.faint : T.text,
+              textDecoration: g.done ? "line-through" : "none",
+            }}
+          >
+            {g.text}
+          </span>
+          <span style={{ fontSize: 12, fontWeight: 800, flexShrink: 0, color: g.done ? T.green : T.faint }}>
+            {g.done ? "완료" : ""}
+          </span>
+        </>
+      )}
+      <button
+        onClick={onRemove}
+        aria-label="목표 삭제"
+        style={{ border: "none", background: "transparent", color: T.faint, cursor: "pointer", fontSize: 13, padding: 4, flexShrink: 0 }}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+// 수량형 달성 수 입력 (입력 후 포커스가 빠지거나 Enter 치면 저장)
+function CountInput({ value, onCommit, T }) {
+  const [v, setV] = useState(String(value));
+  useEffect(() => setV(String(value)), [value]);
+  const commit = () => {
+    const n = Math.max(0, parseInt(v, 10) || 0);
+    setV(String(n));
+    if (n !== value) onCommit(n);
+  };
+  return (
+    <input
+      type="number"
+      min="0"
+      value={v}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+      style={{
+        width: 54,
+        fontFamily: FONT,
+        fontSize: 13.5,
+        fontWeight: 700,
+        textAlign: "center",
+        border: `1.5px solid ${T.inputBorder}`,
+        borderRadius: 8,
+        padding: "5px 2px",
+        background: T.card,
+        color: T.text,
+        outline: "none",
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
+// 목표 추가 입력: 목표수를 넣으면 수량형, 비우면 체크형
+function AddGoalRow({ T, onAdd }) {
+  const [text, setText] = useState("");
+  const [target, setTarget] = useState("");
+  const submit = () => {
+    if (!text.trim()) return;
+    onAdd(text.trim(), Math.max(0, parseInt(target, 10) || 0));
+    setText("");
+    setTarget("");
+  };
+  const inputStyle = {
+    fontFamily: FONT,
+    fontSize: 13.5,
+    border: `1.5px solid ${T.inputBorder}`,
+    borderRadius: 10,
+    padding: "8px 10px",
+    background: T.card,
+    color: T.text,
+    outline: "none",
+  };
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ display: "flex", gap: 6 }}>
+        <input
+          type="text"
+          value={text}
+          placeholder="목표 내용 (예: 장표 쉐도잉)"
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+          style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+        />
+        <input
+          type="number"
+          min="1"
+          value={target}
+          placeholder="목표수"
+          onChange={(e) => setTarget(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+          style={{ ...inputStyle, width: 68, textAlign: "center", flexShrink: 0 }}
+        />
+        <button
+          onClick={submit}
+          style={{
+            fontFamily: FONT,
+            fontSize: 13.5,
+            fontWeight: 700,
+            border: "none",
+            borderRadius: 10,
+            padding: "8px 13px",
+            background: T.blue,
+            color: "#fff",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          추가
+        </button>
+      </div>
+      <div style={{ fontSize: 11.5, color: T.faint, marginTop: 5, paddingLeft: 2, lineHeight: 1.5 }}>
+        목표수를 넣으면 수량으로(예: 40/30 = 133% 초과달성), 비우면 체크로 기록돼요
+      </div>
+    </div>
+  );
+}
+
 function Bar({ pct, h = 8, T }) {
   return (
     <div style={{ width: "100%", height: h, borderRadius: h, background: T.cardSoft, overflow: "hidden" }}>
-      <div style={{ width: `${pct}%`, height: "100%", borderRadius: h, background: pct === 100 ? T.green : T.blue, transition: "width .3s ease" }} />
+      <div style={{ width: `${Math.min(100, pct)}%`, height: "100%", borderRadius: h, background: pct >= 100 ? T.green : T.blue, transition: "width .3s ease" }} />
     </div>
   );
 }
