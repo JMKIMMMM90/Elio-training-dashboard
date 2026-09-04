@@ -1324,25 +1324,26 @@ function GoalRow({ g, T, accent, onToggle, onActual, onRemove }) {
   const isCount = g.target > 0;
   const pct = goalRawPct(g);
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0 7px 2px", borderTop: `1px solid ${T.line}` }}>
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "7px 0 7px 2px", borderTop: `1px solid ${T.line}` }}>
       {isCount ? (
         <>
-          <span style={{ fontSize: 13.5, fontWeight: 600, flex: 1, minWidth: 0, lineHeight: 1.4, color: pct >= 100 ? T.faint : T.text }}>
+          <span style={{ fontSize: 13.5, fontWeight: 600, flex: 1, minWidth: 140, lineHeight: 1.4, color: pct >= 100 ? T.faint : T.text }}>
             {g.text}
           </span>
-          <CountInput value={g.actual || 0} onCommit={onActual} T={T} />
-          <span style={{ fontSize: 12.5, color: T.faint, flexShrink: 0 }}>/ {g.target}</span>
-          <span
-            style={{
-              fontSize: 12,
-              fontWeight: 800,
-              flexShrink: 0,
-              width: 74,
-              textAlign: "right",
-              color: pct > 100 ? T.orange : pct >= 100 ? T.green : accent,
-            }}
-          >
-            {pct > 100 ? `${pct}% 🔥초과` : `${pct}%`}
+          <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: "auto" }}>
+            <CountInput value={g.actual || 0} onCommit={onActual} T={T} />
+            <span style={{ fontSize: 12.5, color: T.faint }}>/ {g.target}</span>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 800,
+                minWidth: 44,
+                textAlign: "right",
+                color: pct > 100 ? T.orange : pct >= 100 ? T.green : accent,
+              }}
+            >
+              {pct > 100 ? `${pct}% 🔥초과` : `${pct}%`}
+            </span>
           </span>
         </>
       ) : (
