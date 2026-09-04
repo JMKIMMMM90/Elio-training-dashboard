@@ -38,7 +38,9 @@ git add → commit → push. 별도 배포 명령 없음.
   - firebaseConfig는 index.html 상단에 있음 (프로젝트: elio-training, 소유: 대표님 구글 계정).
   - localStorage는 이름(training-dashboard-2026-name)·테마(-theme)만 기기별 저장.
     예전 키(training-dashboard-2026)의 기록은 최초 접속 시 온라인으로 1회 자동 이전.
-- 첫 화면: 이름 선택(등록된 명단 + 새 이름 입력). 신입·관리자 모두 이름으로 접속.
+- 첫 화면: 접속할 때마다 항상 표시(자동 로그인 없음). 드롭다운으로 역할 선택 —
+  INITIAN(신입: 명단 선택 또는 새 이름 등록) / 관리자·교육담당자(ADMIN_NAMES+staff
+  등록 이름만 선택 가능, 새 등록 불가).
 - 화면: 전체 진행률 / GROUND RULES / 달력 뷰(기본) / 주차별 체크 뷰 / 전체 현황 뷰(전원 진행률, 실시간).
 
 ## 교육 일정 (WEEKS 상수)

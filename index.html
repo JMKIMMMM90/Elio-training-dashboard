@@ -261,7 +261,6 @@ const CAL_ROWS = buildCalendarRows();
 
 // 예전 기기별 저장(localStorage) 키 — 최초 접속 시 온라인으로 1회 이전용
 const STORAGE_KEY = "training-dashboard-2026";
-const NAME_KEY = "training-dashboard-2026-name";
 const THEME_KEY = "training-dashboard-2026-theme";
 
 // Firebase에서 온 목표 리스트를 배열로 정규화
@@ -343,9 +342,8 @@ function currentWeekNo(today) {
 }
 
 function App() {
-  const [name, setName] = useState(() => {
-    try { return localStorage.getItem(NAME_KEY); } catch { return null; }
-  });
+  // 접속할 때마다 항상 첫 화면(역할·이름 선택)부터 시작한다
+  const [name, setName] = useState(null);
   const [theme, setTheme] = useState(() => {
     try { return localStorage.getItem(THEME_KEY) || "light"; } catch { return "light"; }
   });
@@ -356,47 +354,48 @@ function App() {
     try { localStorage.setItem(THEME_KEY, next); } catch {}
   };
 
-  if (!name)
-    return (
-      <NamePicker
-        T={THEMES[theme]}
-        onPick={(n) => {
-          try { localStorage.setItem(NAME_KEY, n); } catch {}
-          setName(n);
-        }}
-      />
-    );
+  if (!name) return <NamePicker T={THEMES[theme]} onPick={setName} />;
 
   return (
     <TrainingDashboard
       name={name}
       theme={theme}
       switchTheme={switchTheme}
-      onChangeName={() => {
-        try { localStorage.removeItem(NAME_KEY); } catch {}
-        setName(null);
-      }}
+      onChangeName={() => setName(null)}
     />
   );
 }
 
-// ── 첫 화면: 이름 선택 ────────────────────────
+// ── 첫 화면: 역할(INITIAN/관리자) 선택 + 이름 선택 ──
 function NamePicker({ T, onPick }) {
+  const [role, setRole] = useState("trainee"); // trainee | staff
   const [names, setNames] = useState(null);
+  const [staff, setStaff] = useState({});
   const [input, setInput] = useState("");
 
   useEffect(() => {
-    db.ref("users")
-      .once("value")
-      .then((s) => setNames(Object.keys(s.val() || {}).sort((a, b) => a.localeCompare(b, "ko"))))
+    Promise.all([db.ref("users").once("value"), db.ref("config/staff").once("value")])
+      .then(([u, s]) => {
+        setStaff(s.val() || {});
+        setNames(Object.keys(u.val() || {}).sort((a, b) => a.localeCompare(b, "ko")));
+      })
       .catch(() => setNames([]));
   }, []);
+
+  const isMgr = (n) => ADMIN_NAMES.includes(n) || !!staff[n];
+  const traineeNames = (names || []).filter((n) => !isMgr(n));
+  const mgrNames = [...new Set([...ADMIN_NAMES, ...Object.keys(staff)])].sort((a, b) => a.localeCompare(b, "ko"));
+  const listNames = role === "staff" ? mgrNames : traineeNames;
 
   const submit = () => {
     const n = input.trim();
     if (!n) return;
     if (/[.#$/\[\]]/.test(n)) {
       alert("이름에 . # $ [ ] / 문자는 쓸 수 없어요.");
+      return;
+    }
+    if (isMgr(n)) {
+      alert("관리자·교육담당자 이름이에요. 위에서 '관리자 · 교육담당자'를 선택해 주세요.");
       return;
     }
     onPick(n);
@@ -419,18 +418,39 @@ function NamePicker({ T, onPick }) {
     <div style={{ fontFamily: FONT, background: T.bg, minHeight: "100vh", color: T.text, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 8, padding: 28, width: "100%", maxWidth: 420 }}>
         <div style={{ fontSize: 13, color: T.orange, fontWeight: 700, letterSpacing: "0.01em", marginBottom: 8 }}>Elio INITIAN Training Program</div>
-        <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 8, lineHeight: 1.35 }}>누구의 체크리스트인가요?</div>
-        <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.6, marginBottom: 20 }}>
-          이름을 선택하면 기록이 온라인에 저장돼요.
+        <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 8, lineHeight: 1.35 }}>누구로 접속하시나요?</div>
+        <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.6, marginBottom: 18 }}>
+          역할을 고르고 이름을 선택하세요.
           <br />
-          어느 기기에서 접속해도 이어서 볼 수 있어요.
+          기록은 온라인에 저장되어 어느 기기에서든 이어서 볼 수 있어요.
         </div>
+
+        <select
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+          style={{
+            width: "100%",
+            fontFamily: FONT,
+            fontSize: 15,
+            fontWeight: 700,
+            border: `1.5px solid ${T.inputBorder}`,
+            borderRadius: 8,
+            padding: "12px 14px",
+            background: T.cardSoft,
+            color: T.text,
+            outline: "none",
+            marginBottom: 16,
+          }}
+        >
+          <option value="trainee">🎓 INITIAN (신입)</option>
+          <option value="staff">🛠 관리자 · 교육담당자</option>
+        </select>
 
         {names === null && <div style={{ fontSize: 14, color: T.faint, padding: "4px 0 18px" }}>명단 불러오는 중…</div>}
 
-        {names && names.length > 0 && (
+        {names && listNames.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
-            {names.map((n) => (
+            {listNames.map((n) => (
               <button
                 key={n}
                 onClick={() => onPick(n)}
@@ -450,43 +470,53 @@ function NamePicker({ T, onPick }) {
                   textAlign: "left",
                 }}
               >
-                <span>👤 {n}</span>
+                <span>{role === "staff" ? "🛠" : "👤"} {n}</span>
                 <span style={{ color: T.faint }}>›</span>
               </button>
             ))}
           </div>
         )}
 
-        <div style={{ fontSize: 13, fontWeight: 700, color: T.sub, marginBottom: 8 }}>
-          {names && names.length > 0 ? "명단에 없어요 — 새 이름으로 시작" : "이름을 등록하고 시작하세요"}
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            type="text"
-            value={input}
-            placeholder="이름 입력 (예: 홍길동)"
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submit()}
-            style={inputStyle}
-          />
-          <button
-            onClick={submit}
-            style={{
-              fontFamily: FONT,
-              fontSize: 15,
-              fontWeight: 700,
-              border: "none",
-              borderRadius: 8,
-              padding: "12px 18px",
-              background: T.blue,
-              color: "#fff",
-              cursor: "pointer",
-              flexShrink: 0,
-            }}
-          >
-            시작
-          </button>
-        </div>
+        {role === "trainee" ? (
+          <>
+            <div style={{ fontSize: 13, fontWeight: 700, color: T.sub, marginBottom: 8 }}>
+              {names && traineeNames.length > 0 ? "명단에 없어요 — 새 이름으로 시작" : "이름을 등록하고 시작하세요"}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                type="text"
+                value={input}
+                placeholder="이름 입력 (예: 홍길동)"
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submit()}
+                style={inputStyle}
+              />
+              <button
+                onClick={submit}
+                style={{
+                  fontFamily: FONT,
+                  fontSize: 15,
+                  fontWeight: 700,
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "12px 18px",
+                  background: T.blue,
+                  color: "#fff",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                시작
+              </button>
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 12.5, color: T.faint, lineHeight: 1.6 }}>
+            관리자·교육담당자는 등록된 이름으로만 접속할 수 있어요.
+            <br />
+            담당자 추가는 관리자가 ⚙ 관리 탭에서 등록합니다.
+          </div>
+        )}
       </div>
     </div>
   );
