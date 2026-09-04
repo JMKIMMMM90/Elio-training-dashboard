@@ -234,6 +234,14 @@ function fmtDate(dateStr) {
   return { m: d.getMonth() + 1, day: d.getDate(), dow: DOW[d.getDay()] };
 }
 
+// "2026-09-01" → "26.9.1 입사"
+function fmtJoin(d) {
+  if (!d) return "";
+  const p = d.split("-");
+  if (p.length !== 3) return "";
+  return `${p[0].slice(2)}.${+p[1]}.${+p[2]} 입사`;
+}
+
 function todayStr() {
   const d = new Date();
   const p = (n) => String(n).padStart(2, "0");
@@ -370,14 +378,18 @@ function App() {
 function NamePicker({ T, onPick }) {
   const [role, setRole] = useState("trainee"); // trainee | staff
   const [names, setNames] = useState(null);
+  const [usersMap, setUsersMap] = useState({});
   const [staff, setStaff] = useState({});
   const [input, setInput] = useState("");
+  const [joinDate, setJoinDate] = useState("");
 
   useEffect(() => {
     Promise.all([db.ref("users").once("value"), db.ref("config/staff").once("value")])
       .then(([u, s]) => {
+        const uv = u.val() || {};
         setStaff(s.val() || {});
-        setNames(Object.keys(u.val() || {}).sort((a, b) => a.localeCompare(b, "ko")));
+        setUsersMap(uv);
+        setNames(Object.keys(uv).sort((a, b) => a.localeCompare(b, "ko")));
       })
       .catch(() => setNames([]));
   }, []);
@@ -398,6 +410,15 @@ function NamePicker({ T, onPick }) {
       alert("관리자·교육담당자 이름이에요. 위에서 '관리자 · 교육담당자'를 선택해 주세요.");
       return;
     }
+    if (names && names.includes(n)) {
+      onPick(n); // 이미 등록된 이름이면 그대로 입장
+      return;
+    }
+    if (!joinDate) {
+      alert("입사일을 달력에서 선택해 주세요.");
+      return;
+    }
+    db.ref(`users/${n}/joinDate`).set(joinDate).catch(() => {});
     onPick(n);
   };
 
@@ -470,7 +491,12 @@ function NamePicker({ T, onPick }) {
                   textAlign: "left",
                 }}
               >
-                <span>{role === "staff" ? "🛠" : "👤"} {n}</span>
+                <span>
+                  {role === "staff" ? "🛠" : "👤"} {n}
+                  {role === "trainee" && usersMap[n] && usersMap[n].joinDate && (
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: T.faint }}> ({fmtJoin(usersMap[n].joinDate)})</span>
+                  )}
+                </span>
                 <span style={{ color: T.faint }}>›</span>
               </button>
             ))}
@@ -481,6 +507,15 @@ function NamePicker({ T, onPick }) {
           <>
             <div style={{ fontSize: 13, fontWeight: 700, color: T.sub, marginBottom: 8 }}>
               {names && traineeNames.length > 0 ? "명단에 없어요 — 새 이름으로 시작" : "이름을 등록하고 시작하세요"}
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: T.sub, flexShrink: 0 }}>입사일</span>
+              <input
+                type="date"
+                value={joinDate}
+                onChange={(e) => setJoinDate(e.target.value)}
+                style={{ ...inputStyle, colorScheme: "dark light" }}
+              />
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <input
@@ -579,7 +614,7 @@ function AllView({ T }) {
         const plannedUntil = sumTargets(goals, wkDays, a, today);
         return { a, target: tw[a], actual, planSum, diff: actual - plannedUntil };
       });
-      return { name: n, mentor: (v && v.mentor) || "", revSummary, stats: calcStats(checks, goals), todayPct, planned, areas };
+      return { name: n, mentor: (v && v.mentor) || "", joinDate: (v && v.joinDate) || "", revSummary, stats: calcStats(checks, goals), todayPct, planned, areas };
     })
     .sort((a, b) => b.stats.all.pct - a.stats.all.pct || a.name.localeCompare(b.name, "ko"));
 
@@ -595,6 +630,7 @@ function AllView({ T }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
             <span style={{ fontSize: 14.5, fontWeight: 700 }}>
               👤 {r.name}
+              {r.joinDate && <span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}> ({fmtJoin(r.joinDate)})</span>}
               {r.mentor && <span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}> · 담당 {r.mentor}</span>}
             </span>
             <span style={{ fontSize: 14, fontWeight: 800, color: r.stats.all.pct === 100 ? T.green : T.blue }}>
