@@ -149,9 +149,9 @@ const WEEK_COLOR = { 1: "blue", 2: "green", 3: "purple", 4: "orange" };
 const AREA_IDS = ["ppt", "proj", "book"];
 const AREA_LABEL = { ppt: "PPT", proj: "프로젝트", book: "도서" };
 
-// 주차별 총 목표량 — 대표님이 정해주는 값. 숫자를 넣으면 계획 합계와 비교 표시.
-// 예: 1: { ppt: 98 }  → "1주차 PPT 주차 목표 98 · 계획 합계 80 — 18 부족"
-const WEEK_TARGETS = { 1: {}, 2: {}, 3: {}, 4: {} };
+// 관리자 이름 — 이 이름으로 접속하면 "⚙ 목표" 탭(주차 총량 설정)이 보인다.
+// 주차 총량 자체는 Firebase config/targets에 저장되어 전원에게 실시간 반영.
+const ADMIN_NAMES = ["김재민"];
 
 function buildSchedule() {
   const days = [];
@@ -247,6 +247,22 @@ function areaScore(checks, goals, dayKey, areaId) {
 function taskScore(checks, goals, day, task) {
   if (AREA_IDS.includes(task.id)) return areaScore(checks, goals, day.key, task.id);
   return checks[`${day.key}:${task.id}`] ? 1 : 0;
+}
+
+// 주차 내 일별 수량 목표의 합 (upToDate를 주면 그 날짜까지의 계획 누적)
+function sumTargets(goals, days, areaId, upToDate) {
+  return days.reduce((s, d) => {
+    if (upToDate && d.date > upToDate) return s;
+    return s + asList(goals[d.key] && goals[d.key][areaId]).reduce((x, g) => x + (g.target > 0 ? g.target : 0), 0);
+  }, 0);
+}
+
+// 주차 내 수량 목표의 실제 달성 합
+function sumActuals(goals, days, areaId) {
+  return days.reduce(
+    (s, d) => s + asList(goals[d.key] && goals[d.key][areaId]).reduce((x, g) => x + (g.target > 0 ? g.actual || 0 : 0), 0),
+    0
+  );
 }
 
 // checks+goals로 주차별·전체 진행률 계산 (본인 화면·전체 현황 공용)
@@ -437,6 +453,7 @@ function NamePicker({ T, onPick }) {
 // ── 전체 현황 (전원 진행률, 실시간) ────────────
 function AllView({ T }) {
   const [users, setUsers] = useState(null);
+  const [targetsAll, setTargetsAll] = useState({});
 
   useEffect(() => {
     const ref = db.ref("users");
@@ -445,7 +462,12 @@ function AllView({ T }) {
       (s) => setUsers(s.val() || {}),
       () => setUsers({})
     );
-    return () => ref.off("value", cb);
+    const tRef = db.ref("config/targets");
+    const tCb = tRef.on("value", (s) => setTargetsAll(s.val() || {}));
+    return () => {
+      ref.off("value", cb);
+      tRef.off("value", tCb);
+    };
   }, []);
 
   if (users === null)
@@ -460,7 +482,9 @@ function AllView({ T }) {
   const wkNo = currentWeekNo(today);
   const wkDays = SCHEDULE.filter((d) => d.week === wkNo);
 
+  const tw = targetsAll["w" + wkNo] || {};
   const rows = Object.entries(users)
+    .filter(([n]) => !ADMIN_NAMES.includes(n))
     .map(([n, v]) => {
       const checks = (v && v.checks) || {};
       const goals = (v && v.goals) || {};
@@ -468,7 +492,14 @@ function AllView({ T }) {
         ? Math.round((todayD.tasks.reduce((s, t) => s + taskScore(checks, goals, todayD, t), 0) / todayD.tasks.length) * 100)
         : null;
       const planned = wkDays.some((d) => AREA_IDS.some((a) => asList(goals[d.key] && goals[d.key][a]).length > 0));
-      return { name: n, stats: calcStats(checks, goals), todayPct, planned };
+      // 총량이 설정된 영역의 이번 주 누적·페이스
+      const areas = AREA_IDS.filter((a) => (tw[a] || 0) > 0).map((a) => {
+        const actual = sumActuals(goals, wkDays, a);
+        const planSum = sumTargets(goals, wkDays, a);
+        const plannedUntil = sumTargets(goals, wkDays, a, today);
+        return { a, target: tw[a], actual, planSum, diff: actual - plannedUntil };
+      });
+      return { name: n, stats: calcStats(checks, goals), todayPct, planned, areas };
     })
     .sort((a, b) => b.stats.all.pct - a.stats.all.pct || a.name.localeCompare(b.name, "ko"));
 
@@ -503,6 +534,25 @@ function AllView({ T }) {
             이번주 계획{" "}
             <span style={{ fontWeight: 800, color: r.planned ? T.green : T.orange }}>{r.planned ? "세움 ✓" : "아직"}</span>
           </div>
+          {r.areas.map((ai) => (
+            <div key={ai.a} style={{ fontSize: 12, color: T.faint, marginBottom: 6 }}>
+              {AREA_LABEL[ai.a]} 누적{" "}
+              <span style={{ fontWeight: 800, color: ai.actual >= ai.target ? T.green : T.sub }}>
+                {ai.actual}/{ai.target}
+              </span>
+              {" · "}
+              {ai.planSum === 0 ? (
+                <span style={{ fontWeight: 800, color: T.orange }}>계획 미입력</span>
+              ) : (
+                <span>
+                  페이스{" "}
+                  <span style={{ fontWeight: 800, color: ai.diff < 0 ? T.red : ai.diff > 0 ? T.green : T.sub }}>
+                    {ai.diff < 0 ? `${ai.diff} ⚠️` : ai.diff > 0 ? `+${ai.diff} 🔥` : "✓"}
+                  </span>
+                </span>
+              )}
+            </div>
+          ))}
           <Bar pct={r.stats.all.pct} h={8} T={T} />
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             {WEEKS.map((w) => (
@@ -535,6 +585,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   const [addGoalFor, setAddGoalFor] = useState(null); // "dayKey:areaId"
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState("idle");
+  const [targets, setTargets] = useState({}); // 관리자가 설정한 주차 총량 (config/targets)
+  const isAdmin = ADMIN_NAMES.includes(name);
 
   const CAT_STYLE = {
     PPT: { bg: T.blueSoft, fg: T.blue },
@@ -584,6 +636,13 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
     );
     return () => ref.off("value", cb);
   }, [name]);
+
+  // 주차 총량(관리자 설정) 실시간 구독
+  useEffect(() => {
+    const ref = db.ref("config/targets");
+    const cb = ref.on("value", (s) => setTargets(s.val() || {}));
+    return () => ref.off("value", cb);
+  }, []);
 
   const toggleTask = (dayKey, taskId) => {
     const k = `${dayKey}:${taskId}`;
@@ -808,6 +867,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
             { id: "calendar", label: "📅 달력" },
             { id: "week", label: "✅ 주차별" },
             { id: "all", label: "👥 전체 현황" },
+            ...(isAdmin ? [{ id: "settings", label: "⚙ 목표" }] : []),
           ].map((v) => {
             const active = view === v.id;
             return (
@@ -996,34 +1056,58 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               <SummaryRow cat="프로젝트" text={curWeek.project} CAT_STYLE={CAT_STYLE} T={T} />
               <SummaryRow cat="도서" text={`『${curWeek.book}』`} last CAT_STYLE={CAT_STYLE} T={T} />
 
-              {/* 주차 총량 vs 계획 합계 (WEEK_TARGETS에 숫자가 세팅된 영역만) */}
-              {AREA_IDS.filter((a) => (WEEK_TARGETS[week] || {})[a] > 0).map((a) => {
-                const target = WEEK_TARGETS[week][a];
-                const planSum = curDays.reduce(
-                  (s, d) => s + asList(goals[d.key] && goals[d.key][a]).reduce((x, g) => x + (g.target > 0 ? g.target : 0), 0),
-                  0
-                );
-                const actualSum = curDays.reduce(
-                  (s, d) => s + asList(goals[d.key] && goals[d.key][a]).reduce((x, g) => x + (g.target > 0 ? g.actual || 0 : 0), 0),
-                  0
-                );
-                const short = planSum < target;
+              {/* 주차 총량 검증 (관리자가 ⚙ 목표에서 세팅한 영역만): 누적 게이지 + 계획 합계 + 페이스 */}
+              {AREA_IDS.filter((a) => ((targets["w" + week] || {})[a] || 0) > 0).map((a) => {
+                const target = targets["w" + week][a];
+                const planSum = sumTargets(goals, curDays, a);
+                const actualSum = sumActuals(goals, curDays, a);
+                const pct = Math.round((actualSum / target) * 100);
+                const plannedUntil = sumTargets(goals, curDays, a, today);
+                const diff = actualSum - plannedUntil;
+                const showPace = week === defaultWeek && planSum > 0 && today >= curDays[0].date;
                 return (
-                  <div
-                    key={a}
-                    style={{
-                      marginTop: 8,
-                      padding: "9px 12px",
-                      borderRadius: 12,
-                      background: short ? T.orangeSoft : T.greenSoft,
-                      color: short ? T.orange : T.green,
-                      fontSize: 12.5,
-                      fontWeight: 700,
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    {AREA_LABEL[a]} 주차 목표 {target} · 계획 합계 {planSum}
-                    {short ? ` — ${target - planSum} 부족한 계획이에요` : " ✓"} · 지금까지 달성 {actualSum}
+                  <div key={a} style={{ marginTop: 10, padding: "11px 12px", borderRadius: 12, background: T.cardSoft }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 7 }}>
+                      <span style={{ fontSize: 13, fontWeight: 800 }}>{AREA_LABEL[a]} 주간 누적</span>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: pct >= 100 ? T.green : T[WEEK_COLOR[week]] }}>
+                        {actualSum}/{target} ({pct}%)
+                      </span>
+                    </div>
+                    <Bar pct={pct} h={8} T={T} />
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        marginTop: 7,
+                        lineHeight: 1.6,
+                        color: planSum === 0 ? T.faint : planSum < target ? T.orange : planSum === target ? T.green : T.blue,
+                      }}
+                    >
+                      {planSum === 0
+                        ? "아직 일별 계획이 없어요 — Day 카드를 열어 목표수를 배분해 주세요"
+                        : planSum < target
+                        ? `계획 합계 ${planSum}/${target} — ${target - planSum} 부족한 계획이에요`
+                        : planSum === target
+                        ? `계획 합계 ${planSum}/${target} ✓`
+                        : `계획 합계 ${planSum}/${target} — 초과 계획`}
+                    </div>
+                    {showPace && (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          marginTop: 3,
+                          lineHeight: 1.6,
+                          color: diff < 0 ? T.red : diff > 0 ? T.green : T.sub,
+                        }}
+                      >
+                        {diff < 0
+                          ? `오늘까지 계획 ${plannedUntil} · 실제 ${actualSum} — ${-diff} 뒤처짐 ⚠️`
+                          : diff > 0
+                          ? `오늘까지 계획 ${plannedUntil} · 실제 ${actualSum} — ${diff} 앞서감 🔥`
+                          : `오늘까지 계획 ${plannedUntil} · 실제 ${actualSum} — 계획대로 가고 있어요 ✓`}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1044,6 +1128,13 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                 const open = openDay === d.key;
                 const dayLogs = logs[d.key] || [];
                 const wc = T[WEEK_COLOR[d.week]];
+                const dayPlanStr = AREA_IDS.filter((a) => ((targets["w" + d.week] || {})[a] || 0) > 0)
+                  .map((a) => {
+                    const dp = sumTargets(goals, [d], a);
+                    return dp > 0 ? `${AREA_LABEL[a]} 계획 ${dp}` : null;
+                  })
+                  .filter(Boolean)
+                  .join(" · ");
 
                 return (
                   <div key={d.key} style={{ ...card(0), padding: 0, overflow: "hidden" }}>
@@ -1091,6 +1182,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                         </div>
                         <div style={{ fontSize: 13, color: T.faint }}>
                           할 일 {done}/{total}
+                          {dayPlanStr && ` · ${dayPlanStr}`}
                           {dayLogs.length > 0 && ` · 일과 ${dayLogs.length}건`}
                         </div>
                       </div>
@@ -1278,6 +1370,9 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
         {/* ══════════ 전체 현황 뷰 ══════════ */}
         {view === "all" && <AllView T={T} />}
 
+        {/* ══════════ 목표 설정 (관리자 전용) ══════════ */}
+        {view === "settings" && isAdmin && <TargetSettings T={T} targets={targets} setSaveState={setSaveState} />}
+
         {saveState === "error" && (
           <div style={{ marginTop: 16, padding: "12px 14px", borderRadius: 12, background: T.redSoft, color: T.red, fontSize: 13, fontWeight: 600 }}>
             저장에 실패했어요. 인터넷 연결을 확인한 뒤 다시 체크해 주세요.
@@ -1295,6 +1390,80 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
 }
 
 /* ── 소형 컴포넌트 ── */
+
+// 관리자용: 주차별 총 목표량 설정 (config/targets에 저장, 전원 즉시 반영)
+function TargetSettings({ T, targets, setSaveState }) {
+  const save = (weekNo, areaId, n) => {
+    setSaveState("saving");
+    db.ref(`config/targets/w${weekNo}/${areaId}`)
+      .set(n > 0 ? n : null)
+      .then(() => setSaveState("idle"))
+      .catch(() => setSaveState("error"));
+  };
+  return (
+    <div style={{ background: T.card, borderRadius: 20, padding: 18, boxShadow: T.shadow }}>
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>주차별 총 목표량 설정</div>
+      <div style={{ fontSize: 12.5, color: T.faint, marginBottom: 16, lineHeight: 1.6 }}>
+        숫자를 넣으면 신입 화면에 누적 게이지·계획 합계 검증·페이스 점검이 표시돼요.
+        비우면 그 영역은 표시하지 않아요. 입력하는 즉시 전원에게 반영됩니다.
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 6, paddingLeft: 52 }}>
+        {AREA_IDS.map((a) => (
+          <div key={a} style={{ flex: 1, textAlign: "center", fontSize: 12, fontWeight: 700, color: T.sub }}>
+            {AREA_LABEL[a]}
+          </div>
+        ))}
+      </div>
+      {WEEKS.map((w) => (
+        <div key={w.no} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0" }}>
+          <div style={{ width: 44, fontSize: 13, fontWeight: 800, color: T[WEEK_COLOR[w.no]], flexShrink: 0 }}>{w.no}주차</div>
+          {AREA_IDS.map((a) => (
+            <TargetInput key={a} T={T} value={(targets["w" + w.no] || {})[a] || 0} onCommit={(n) => save(w.no, a, n)} />
+          ))}
+        </div>
+      ))}
+      <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 12, background: T.blueSoft, color: T.blue, fontSize: 12.5, fontWeight: 600, lineHeight: 1.6 }}>
+        예: 1주차 PPT에 98을 넣으면 신입의 1주차 화면에 "계획 합계 __/98"과 누적 게이지가 나타나요
+      </div>
+    </div>
+  );
+}
+
+// 총량 입력 칸 (비우면 해당 영역 목표 없음)
+function TargetInput({ T, value, onCommit }) {
+  const [v, setV] = useState(value > 0 ? String(value) : "");
+  useEffect(() => setV(value > 0 ? String(value) : ""), [value]);
+  const commit = () => {
+    const n = Math.max(0, parseInt(v, 10) || 0);
+    setV(n > 0 ? String(n) : "");
+    if (n !== value) onCommit(n);
+  };
+  return (
+    <input
+      type="number"
+      min="0"
+      value={v}
+      placeholder="—"
+      onChange={(e) => setV(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+      style={{
+        flex: 1,
+        minWidth: 0,
+        fontFamily: FONT,
+        fontSize: 14,
+        fontWeight: 700,
+        textAlign: "center",
+        border: `1.5px solid ${T.inputBorder}`,
+        borderRadius: 10,
+        padding: "9px 4px",
+        background: T.cardSoft,
+        color: T.text,
+        outline: "none",
+      }}
+    />
+  );
+}
 
 function CheckBox({ on, T }) {
   return (

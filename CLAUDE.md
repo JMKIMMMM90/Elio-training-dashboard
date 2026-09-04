@@ -21,8 +21,11 @@ git add → commit → push. 별도 배포 명령 없음.
   - goals: 하루 목표(신입 자율 입력). goals/<dayKey>/<ppt|proj|book> = 목표 배열.
     수량형 {text, target, actual}(초과달성 가능, 집계는 100% 캡) / 체크형 {text, done}.
     목표가 있는 영역은 목표 평균으로, 없으면 기존 checks 체크로 점수 계산(taskScore).
-  - WEEK_TARGETS 상수(index.html): 주차별 총 목표량(예: 1주차 PPT 98장). 대표님이
-    숫자를 주면 세팅 — 주차 학습 내용 카드에 "계획 합계 vs 목표" 비교가 표시됨.
+  - 주차 총 목표량은 config/targets/w<주차>/<영역>에 저장 (관리자가 앱의 "⚙ 목표" 탭에서
+    입력, 전원 실시간 반영). ADMIN_NAMES 상수(index.html)에 있는 이름(김재민)으로 접속해야
+    탭이 보임 — 로그인이 없으므로 편의상 숨김이지 보안 아님. 관리자는 전체 현황 목록에서 제외.
+  - 총량이 설정된 영역은 주차 화면에 누적 게이지 / 계획 합계 검증(부족·일치·초과) /
+    페이스 점검(오늘까지 계획 누적 vs 실제)이 표시됨. 전체 현황에도 사람별 누적·페이스 표시.
   - firebaseConfig는 index.html 상단에 있음 (프로젝트: elio-training, 소유: 대표님 구글 계정).
   - localStorage는 이름(training-dashboard-2026-name)·테마(-theme)만 기기별 저장.
     예전 키(training-dashboard-2026)의 기록은 최초 접속 시 온라인으로 1회 자동 이전.
