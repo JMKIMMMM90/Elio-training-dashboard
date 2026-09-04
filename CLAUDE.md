@@ -1,7 +1,8 @@
-# 신입교육 대시보드 (Elio-training-dashboard)
+# Elio INITIAN Training Program (Elio-training-dashboard)
 
 ## 프로젝트 개요
 엘리오앤컴퍼니 신입교육(2026.9.2~10.1, 4주) 진척도 관리 대시보드.
+프로그램 공식 명칭 "Elio INITIAN Training Program", 진행률 카드 제목 "Road to INITIAN".
 GitHub Pages로 배포되어 신입들이 URL로 접속해 사용한다.
 - 배포 주소: https://jmkimmmm90.github.io/Elio-training-dashboard/
 
@@ -24,9 +25,14 @@ git add → commit → push. 별도 배포 명령 없음.
   - goals: 하루 목표(신입 자율 입력). goals/<dayKey>/<ppt|proj|book> = 목표 배열.
     수량형 {text, target, actual}(초과달성 가능, 집계는 100% 캡) / 체크형 {text, done}.
     목표가 있는 영역은 목표 평균으로, 없으면 기존 checks 체크로 점수 계산(taskScore).
-  - 주차 총 목표량은 config/targets/w<주차>/<영역>에 저장 (관리자가 앱의 "⚙ 목표" 탭에서
-    입력, 전원 실시간 반영). ADMIN_NAMES 상수(index.html)에 있는 이름(김재민)으로 접속해야
-    탭이 보임 — 로그인이 없으므로 편의상 숨김이지 보안 아님. 관리자는 전체 현황 목록에서 제외.
+  - config 노드(전원 실시간 반영): targets/w<주차>/<영역>=주차 총량,
+    weeks/w<주차>/{ppt,project,book}=과제명 덮어쓰기(없으면 코드 기본값, mergeWeeks),
+    staff/<이름>=true 담당자 명단.
+  - 권한 2단계: ADMIN_NAMES 상수(김재민) = "⚙ 관리" 탭(총량·과제명·담당자 명단·신입별
+    담당자 지정) + 평가. config/staff에 등록된 담당자 = "📝 평가" 탭. 로그인이 없으므로
+    편의상 숨김이지 보안 아님. 관리자·담당자는 전체 현황 목록에서 제외.
+  - 평가: users/<신입>/reviews/{w1~w4,final} = {score(10점 만점), comment, by, at}.
+    저장 즉시 신입 본인 화면의 "교육 평가" 카드에 공개됨. users/<신입>/mentor = 담당자명.
   - 총량이 설정된 영역은 주차 화면에 누적 게이지 / 계획 합계 검증(부족·일치·초과) /
     페이스 점검(오늘까지 계획 누적 vs 실제)이 표시됨. 전체 현황에도 사람별 누적·페이스 표시.
   - firebaseConfig는 index.html 상단에 있음 (프로젝트: elio-training, 소유: 대표님 구글 계정).

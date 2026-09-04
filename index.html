@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>신입교육 대시보드 · 2026.9.2 ~ 10.1</title>
+<title>Elio INITIAN Training Program</title>
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js"></script>
@@ -158,6 +158,38 @@ const WEEK_COLOR = { 1: "w1", 2: "w2", 3: "w3", 4: "w4" };
 // 하루 목표를 세울 수 있는 3개 영역 (제출·TEST는 고정 체크 유지)
 const AREA_IDS = ["ppt", "proj", "book"];
 const AREA_LABEL = { ppt: "PPT", proj: "프로젝트", book: "도서" };
+
+// 평가 항목 (10점 만점 + 코멘트, 저장 즉시 신입 본인에게 공개)
+const REVIEW_KEYS = [
+  { key: "w1", label: "1주차" },
+  { key: "w2", label: "2주차" },
+  { key: "w3", label: "3주차" },
+  { key: "w4", label: "4주차" },
+  { key: "final", label: "종합" },
+];
+
+// 주차별 과제명: config/weeks에 값이 있으면 코드 기본값을 덮어쓴다 (관리 탭에서 수정)
+function mergeWeeks(cfgWeeks) {
+  return WEEKS.map((w) => {
+    const o = (cfgWeeks || {})["w" + w.no] || {};
+    return { ...w, ppt: o.ppt || w.ppt, project: o.project || w.project, book: o.book || w.book };
+  });
+}
+
+// 과제 표시 이름 — 과제명 수정이 즉시 반영되도록 렌더링 시점에 계산
+function taskLabel(task, w) {
+  switch (task.id) {
+    case "ppt": return w.ppt;
+    case "proj": return `보고서 숙지 · ${w.project}`;
+    case "book": return `독서 · 『${w.book}』`;
+    case "report-ppt": return "PPT 과제 작성본 제출";
+    case "report-book": return `독후감 제출 『${w.book}』`;
+    case "test-proj": return `프로젝트 서술형 TEST (${w.project})`;
+    case "test-book": return `도서 퀴즈·서술형 TEST (${w.book})`;
+    case "test-ppt": return "PPT 테스트 (AI 활용)";
+    default: return task.label;
+  }
+}
 
 // 관리자 이름 — 이 이름으로 접속하면 "⚙ 목표" 탭(주차 총량 설정)이 보인다.
 // 주차 총량 자체는 Firebase config/targets에 저장되어 전원에게 실시간 반영.
@@ -386,7 +418,7 @@ function NamePicker({ T, onPick }) {
   return (
     <div style={{ fontFamily: FONT, background: T.bg, minHeight: "100vh", color: T.text, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 8, padding: 28, width: "100%", maxWidth: 420 }}>
-        <div style={{ fontSize: 13, color: T.orange, fontWeight: 700, letterSpacing: "0.01em", marginBottom: 8 }}>신입교육 프로그램 · 2026.9.2 ~ 10.1</div>
+        <div style={{ fontSize: 13, color: T.orange, fontWeight: 700, letterSpacing: "0.01em", marginBottom: 8 }}>Elio INITIAN Training Program</div>
         <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 8, lineHeight: 1.35 }}>누구의 체크리스트인가요?</div>
         <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.6, marginBottom: 20 }}>
           이름을 선택하면 기록이 온라인에 저장돼요.
@@ -463,7 +495,7 @@ function NamePicker({ T, onPick }) {
 // ── 전체 현황 (전원 진행률, 실시간) ────────────
 function AllView({ T }) {
   const [users, setUsers] = useState(null);
-  const [targetsAll, setTargetsAll] = useState({});
+  const [cfgAll, setCfgAll] = useState({});
 
   useEffect(() => {
     const ref = db.ref("users");
@@ -472,8 +504,8 @@ function AllView({ T }) {
       (s) => setUsers(s.val() || {}),
       () => setUsers({})
     );
-    const tRef = db.ref("config/targets");
-    const tCb = tRef.on("value", (s) => setTargetsAll(s.val() || {}));
+    const tRef = db.ref("config");
+    const tCb = tRef.on("value", (s) => setCfgAll(s.val() || {}));
     return () => {
       ref.off("value", cb);
       tRef.off("value", tCb);
@@ -492,12 +524,20 @@ function AllView({ T }) {
   const wkNo = currentWeekNo(today);
   const wkDays = SCHEDULE.filter((d) => d.week === wkNo);
 
-  const tw = targetsAll["w" + wkNo] || {};
+  const staffAll = cfgAll.staff || {};
+  const tw = (cfgAll.targets || {})["w" + wkNo] || {};
   const rows = Object.entries(users)
-    .filter(([n]) => !ADMIN_NAMES.includes(n))
+    .filter(([n]) => !ADMIN_NAMES.includes(n) && !staffAll[n])
     .map(([n, v]) => {
       const checks = (v && v.checks) || {};
       const goals = (v && v.goals) || {};
+      const rv = (v && v.reviews) || {};
+      const revSummary =
+        Object.keys(rv).length > 0
+          ? ["w1", "w2", "w3", "w4"].map((k) => (rv[k] && rv[k].score != null ? rv[k].score : "─")).join("·") +
+            " | 종합 " +
+            (rv.final && rv.final.score != null ? rv.final.score : "─")
+          : null;
       const todayPct = todayD
         ? Math.round((todayD.tasks.reduce((s, t) => s + taskScore(checks, goals, todayD, t), 0) / todayD.tasks.length) * 100)
         : null;
@@ -509,7 +549,7 @@ function AllView({ T }) {
         const plannedUntil = sumTargets(goals, wkDays, a, today);
         return { a, target: tw[a], actual, planSum, diff: actual - plannedUntil };
       });
-      return { name: n, stats: calcStats(checks, goals), todayPct, planned, areas };
+      return { name: n, mentor: (v && v.mentor) || "", revSummary, stats: calcStats(checks, goals), todayPct, planned, areas };
     })
     .sort((a, b) => b.stats.all.pct - a.stats.all.pct || a.name.localeCompare(b.name, "ko"));
 
@@ -523,7 +563,10 @@ function AllView({ T }) {
       {rows.map((r, i) => (
         <div key={r.name} style={{ padding: "13px 0", borderBottom: i === rows.length - 1 ? "none" : `1px solid ${T.line}` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-            <span style={{ fontSize: 14.5, fontWeight: 700 }}>👤 {r.name}</span>
+            <span style={{ fontSize: 14.5, fontWeight: 700 }}>
+              👤 {r.name}
+              {r.mentor && <span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}> · 담당 {r.mentor}</span>}
+            </span>
             <span style={{ fontSize: 14, fontWeight: 800, color: r.stats.all.pct === 100 ? T.green : T.blue }}>
               {r.stats.all.pct}%{" "}
               <span style={{ fontSize: 11.5, fontWeight: 600, color: T.faint }}>
@@ -544,6 +587,11 @@ function AllView({ T }) {
             이번주 계획{" "}
             <span style={{ fontWeight: 800, color: r.planned ? T.green : T.orange }}>{r.planned ? "세움 ✓" : "아직"}</span>
           </div>
+          {r.revSummary && (
+            <div style={{ fontSize: 12, color: T.faint, marginBottom: 6 }}>
+              평가 <span style={{ fontWeight: 800, color: T.sub }}>{r.revSummary}</span>
+            </div>
+          )}
           {r.areas.map((ai) => (
             <div key={ai.a} style={{ fontSize: 12, color: T.faint, marginBottom: 6 }}>
               {AREA_LABEL[ai.a]} 누적{" "}
@@ -595,8 +643,14 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   const [addGoalFor, setAddGoalFor] = useState(null); // "dayKey:areaId"
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState("idle");
-  const [targets, setTargets] = useState({}); // 관리자가 설정한 주차 총량 (config/targets)
+  const [cfg, setCfg] = useState({}); // config 전체: targets(총량)·weeks(과제명)·staff(담당자 명단)
+  const [mentor, setMentor] = useState("");
+  const [reviews, setReviews] = useState({});
+  const targets = cfg.targets || {};
+  const staff = cfg.staff || {};
+  const wkList = useMemo(() => mergeWeeks(cfg.weeks), [cfg]);
   const isAdmin = ADMIN_NAMES.includes(name);
+  const isStaff = isAdmin || !!staff[name];
 
   const CAT_STYLE = {
     PPT: { bg: T.blueSoft, fg: T.blue },
@@ -618,6 +672,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           setChecks(v.checks || {});
           setLogs(v.logs || {});
           setGoals(v.goals || {});
+          setMentor(v.mentor || "");
+          setReviews(v.reviews || {});
         } else if (!migrated) {
           migrated = true;
           // 예전 기기별 저장(localStorage) 기록이 있으면 온라인으로 1회 이전
@@ -636,6 +692,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           setChecks({});
           setLogs({});
           setGoals({});
+          setMentor("");
+          setReviews({});
         }
         setLoaded(true);
       },
@@ -647,10 +705,10 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
     return () => ref.off("value", cb);
   }, [name]);
 
-  // 주차 총량(관리자 설정) 실시간 구독
+  // 설정(총량·과제명·담당자 명단) 실시간 구독
   useEffect(() => {
-    const ref = db.ref("config/targets");
-    const cb = ref.on("value", (s) => setTargets(s.val() || {}));
+    const ref = db.ref("config");
+    const cb = ref.on("value", (s) => setCfg(s.val() || {}));
     return () => ref.off("value", cb);
   }, []);
 
@@ -744,7 +802,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
     setView("week");
   };
 
-  const curWeek = WEEKS.find((w) => w.no === week);
+  const curWeek = wkList.find((w) => w.no === week);
   const curDays = SCHEDULE.filter((d) => d.week === week);
   const weekHasPlan = curDays.some((d) => AREA_IDS.some((a) => asList(goals[d.key] && goals[d.key][a]).length > 0));
 
@@ -771,7 +829,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "4px 4px 20px" }}>
           <div>
             <div style={{ fontSize: 13, color: T.orange, fontWeight: 700, letterSpacing: "0.01em", marginBottom: 5 }}>
-              신입교육 프로그램 · 2026.9.2(수) ~ 10.1(목)
+              Elio INITIAN Training Program · 2026.9.2(수) ~ 10.1(목)
             </div>
             <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.01em", lineHeight: 1.3 }}>
               {name}님, 지금 <span style={{ color: T.blue }}>{stats.all.pct}%</span> 왔어요
@@ -817,7 +875,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
         {/* ── 전체 진행률 ── */}
         <div style={card()}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
-            <span style={{ fontSize: 15, fontWeight: 700 }}>전체 진행률</span>
+            <span style={{ fontSize: 15, fontWeight: 800 }}>Road to INITIAN</span>
             <span style={{ fontSize: 13, color: T.faint }}>{Math.round(stats.all.done)} / {stats.all.total} 완료</span>
           </div>
           <Bar pct={stats.all.pct} h={10} T={T} />
@@ -833,6 +891,40 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
             ))}
           </div>
         </div>
+
+        {/* ── 교육 평가 (담당자·관리자가 입력, 본인에게 공개) ── */}
+        {(mentor || Object.keys(reviews).length > 0) && (
+          <div style={card(12)}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+              <span style={{ fontSize: 15, fontWeight: 700 }}>📋 교육 평가</span>
+              {mentor && <span style={{ fontSize: 13, fontWeight: 700, color: T.sub }}>담당 {mentor}</span>}
+            </div>
+            {REVIEW_KEYS.map((rk, i) => {
+              const r = reviews[rk.key];
+              const scored = r && r.score !== null && r.score !== undefined;
+              return (
+                <div key={rk.key} style={{ padding: "9px 0", borderBottom: i === REVIEW_KEYS.length - 1 ? "none" : `1px solid ${T.line}` }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: rk.key === "final" ? T.orange : T[WEEK_COLOR[i + 1]] }}>
+                      {rk.label}
+                    </span>
+                    {scored ? (
+                      <span style={{ fontSize: 13, fontWeight: 800, color: T.green, background: T.greenSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
+                        {r.score}/10
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 13, color: T.faint }}>평가 전</span>
+                    )}
+                    {r && r.by && <span style={{ marginLeft: "auto", fontSize: 12, color: T.faint }}>{r.by}</span>}
+                  </div>
+                  {r && r.comment && (
+                    <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.6, marginTop: 5, paddingLeft: 54 }}>{r.comment}</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* ── GROUND RULES ── */}
         <div style={card(12)}>
@@ -878,7 +970,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
             { id: "calendar", label: "📅 달력" },
             { id: "week", label: "✅ 주차별" },
             { id: "all", label: "👥 전체 현황" },
-            ...(isAdmin ? [{ id: "settings", label: "⚙ 목표" }] : []),
+            ...(isStaff ? [{ id: "review", label: "📝 평가" }] : []),
+            ...(isAdmin ? [{ id: "settings", label: "⚙ 관리" }] : []),
           ].map((v) => {
             const active = view === v.id;
             return (
@@ -987,7 +1080,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
             {/* 범례 + 주차 요약 */}
             <div style={card(12)}>
               <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>주차별 일정 한눈에 보기</div>
-              {WEEKS.map((w, i) => (
+              {wkList.map((w, i) => (
                 <div
                   key={w.no}
                   style={{
@@ -1247,7 +1340,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                                     flex: 1,
                                   }}
                                 >
-                                  {t.label}
+                                  {taskLabel(t, curWeek)}
                                 </span>
                                 {t.time && (
                                   <span style={{ fontSize: 12, fontWeight: 800, color: cs.fg, flexShrink: 0, whiteSpace: "nowrap" }}>
@@ -1307,7 +1400,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                                     minWidth: 0,
                                   }}
                                 >
-                                  {t.label}
+                                  {taskLabel(t, curWeek)}
                                 </span>
                                 <button
                                   onClick={() => setAddGoalFor(addGoalFor === addKey ? null : addKey)}
@@ -1386,8 +1479,13 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
         {/* ══════════ 전체 현황 뷰 ══════════ */}
         {view === "all" && <AllView T={T} />}
 
-        {/* ══════════ 목표 설정 (관리자 전용) ══════════ */}
-        {view === "settings" && isAdmin && <TargetSettings T={T} targets={targets} setSaveState={setSaveState} />}
+        {/* ══════════ 평가 입력 (담당자·관리자) ══════════ */}
+        {view === "review" && isStaff && <ReviewPanel T={T} me={name} setSaveState={setSaveState} />}
+
+        {/* ══════════ 관리 센터 (관리자 전용) ══════════ */}
+        {view === "settings" && isAdmin && (
+          <AdminPanel T={T} targets={targets} weeks={wkList} staff={staff} setSaveState={setSaveState} />
+        )}
 
         {saveState === "error" && (
           <div style={{ marginTop: 16, padding: "12px 14px", borderRadius: 8, background: T.redSoft, color: T.red, fontSize: 13, fontWeight: 600 }}>
@@ -1407,41 +1505,356 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
 
 /* ── 소형 컴포넌트 ── */
 
-// 관리자용: 주차별 총 목표량 설정 (config/targets에 저장, 전원 즉시 반영)
-function TargetSettings({ T, targets, setSaveState }) {
-  const save = (weekNo, areaId, n) => {
+// 관리자 전용 관리 센터: ①주차 총량 ②과제명 ③담당자 명단 ④신입별 담당자
+function AdminPanel({ T, targets, weeks, staff, setSaveState }) {
+  const [users, setUsers] = useState({});
+  const [staffInput, setStaffInput] = useState("");
+  useEffect(() => {
+    const ref = db.ref("users");
+    const cb = ref.on("value", (s) => setUsers(s.val() || {}));
+    return () => ref.off("value", cb);
+  }, []);
+  const saveDb = (path, val) => {
     setSaveState("saving");
-    db.ref(`config/targets/w${weekNo}/${areaId}`)
-      .set(n > 0 ? n : null)
+    db.ref(path).set(val).then(() => setSaveState("idle")).catch(() => setSaveState("error"));
+  };
+  const box = { background: T.card, border: `1px solid ${T.line}`, borderRadius: 8, padding: 18 };
+  const secTitle = { fontSize: 15, fontWeight: 700, marginBottom: 4 };
+  const secDesc = { fontSize: 12.5, color: T.faint, marginBottom: 14, lineHeight: 1.6 };
+  const staffNames = Object.keys(staff).sort((a, b) => a.localeCompare(b, "ko"));
+  const traineeNames = Object.keys(users)
+    .filter((n) => !ADMIN_NAMES.includes(n) && !staff[n])
+    .sort((a, b) => a.localeCompare(b, "ko"));
+  const addStaff = () => {
+    const n = staffInput.trim();
+    if (!n) return;
+    if (/[.#$/\[\]]/.test(n)) {
+      alert("이름에 . # $ [ ] / 문자는 쓸 수 없어요.");
+      return;
+    }
+    saveDb(`config/staff/${n}`, true);
+    setStaffInput("");
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* ① 주차별 총량 */}
+      <div style={box}>
+        <div style={secTitle}>주차별 총 목표량</div>
+        <div style={secDesc}>
+          숫자를 넣으면 신입 화면에 누적 게이지·계획 합계 검증·페이스 점검이 표시돼요.
+          비우면 그 영역은 표시하지 않아요. 입력하는 즉시 전원에게 반영됩니다.
+        </div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 6, paddingLeft: 52 }}>
+          {AREA_IDS.map((a) => (
+            <div key={a} style={{ flex: 1, textAlign: "center", fontSize: 12, fontWeight: 700, color: T.sub }}>
+              {AREA_LABEL[a]}
+            </div>
+          ))}
+        </div>
+        {WEEKS.map((w) => (
+          <div key={w.no} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0" }}>
+            <div style={{ width: 44, fontSize: 13, fontWeight: 800, color: T[WEEK_COLOR[w.no]], flexShrink: 0 }}>{w.no}주차</div>
+            {AREA_IDS.map((a) => (
+              <TargetInput
+                key={a}
+                T={T}
+                value={(targets["w" + w.no] || {})[a] || 0}
+                onCommit={(n) => saveDb(`config/targets/w${w.no}/${a}`, n > 0 ? n : null)}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* ② 주차별 과제명 */}
+      <div style={box}>
+        <div style={secTitle}>주차별 과제명 편집</div>
+        <div style={secDesc}>
+          수정하면 신입 전원 화면(주차 요약·Day 카드·제출/TEST 항목)에 즉시 반영돼요.
+          이미 입력된 체크·목표 기록은 깨지지 않아요. 비우면 원래 이름으로 돌아갑니다.
+        </div>
+        {weeks.map((w) => (
+          <div key={w.no} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: T[WEEK_COLOR[w.no]], marginBottom: 6 }}>
+              {w.no}주차 · {w.range}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {[
+                { f: "ppt", label: "PPT", val: w.ppt },
+                { f: "project", label: "프로젝트", val: w.project },
+                { f: "book", label: "도서", val: w.book },
+              ].map((row) => (
+                <div key={row.f} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 52, fontSize: 12, fontWeight: 700, color: T.sub, flexShrink: 0 }}>{row.label}</span>
+                  <TextCommit T={T} small value={row.val} onCommit={(t) => saveDb(`config/weeks/w${w.no}/${row.f}`, t || null)} />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ③ 담당자 명단 */}
+      <div style={box}>
+        <div style={secTitle}>교육담당자 명단</div>
+        <div style={secDesc}>
+          등록된 담당자가 자기 이름으로 접속하면 📝 평가 탭이 열려요.
+          담당자·관리자는 전체 현황 목록에서 제외됩니다.
+        </div>
+        {staffNames.length === 0 && (
+          <div style={{ fontSize: 13, color: T.faint, marginBottom: 10 }}>아직 등록된 담당자가 없어요.</div>
+        )}
+        {staffNames.map((n) => (
+          <div key={n} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
+            <span style={{ flex: 1, fontSize: 14, fontWeight: 700 }}>🧑‍🏫 {n}</span>
+            <button
+              onClick={() => saveDb(`config/staff/${n}`, null)}
+              aria-label="담당자 삭제"
+              style={{ border: "none", background: "transparent", color: T.faint, cursor: "pointer", fontSize: 13, padding: 4 }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <input
+            type="text"
+            value={staffInput}
+            placeholder="담당자 이름 입력"
+            onChange={(e) => setStaffInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addStaff()}
+            style={{ flex: 1, minWidth: 0, fontFamily: FONT, fontSize: 14, border: `1.5px solid ${T.inputBorder}`, borderRadius: 8, padding: "9px 11px", background: T.cardSoft, color: T.text, outline: "none" }}
+          />
+          <button
+            onClick={addStaff}
+            style={{ fontFamily: FONT, fontSize: 14, fontWeight: 700, border: "none", borderRadius: 8, padding: "9px 15px", background: T.blue, color: "#fff", cursor: "pointer", flexShrink: 0 }}
+          >
+            등록
+          </button>
+        </div>
+      </div>
+
+      {/* ④ 신입별 담당자 지정 */}
+      <div style={box}>
+        <div style={secTitle}>신입별 교육담당자 지정</div>
+        <div style={secDesc}>신입 화면의 평가 카드와 전체 현황에 "담당 OOO"로 표시돼요.</div>
+        {traineeNames.length === 0 && <div style={{ fontSize: 13, color: T.faint }}>등록된 신입이 없어요.</div>}
+        {traineeNames.map((n) => (
+          <div key={n} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
+            <span style={{ width: 92, fontSize: 14, fontWeight: 700, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              👤 {n}
+            </span>
+            <TextCommit
+              T={T}
+              small
+              value={(users[n] && users[n].mentor) || ""}
+              placeholder="담당자 이름"
+              onCommit={(t) => saveDb(`users/${n}/mentor`, t || null)}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// 담당자·관리자용 평가 입력 (10점 만점 + 코멘트)
+function ReviewPanel({ T, me, setSaveState }) {
+  const [users, setUsers] = useState(null);
+  const [cfg, setCfg] = useState({});
+  const [sel, setSel] = useState(null);
+  useEffect(() => {
+    const uRef = db.ref("users");
+    const uCb = uRef.on("value", (s) => setUsers(s.val() || {}));
+    const cRef = db.ref("config");
+    const cCb = cRef.on("value", (s) => setCfg(s.val() || {}));
+    return () => {
+      uRef.off("value", uCb);
+      cRef.off("value", cCb);
+    };
+  }, []);
+  if (users === null)
+    return (
+      <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 8, padding: 24, textAlign: "center", color: T.faint, fontSize: 14 }}>
+        불러오는 중…
+      </div>
+    );
+  const staff = cfg.staff || {};
+  const names = Object.keys(users)
+    .filter((n) => !ADMIN_NAMES.includes(n) && !staff[n])
+    .sort((a, b) => a.localeCompare(b, "ko"));
+  const cur = sel && users[sel] ? users[sel] : null;
+  const save = (key, patch) => {
+    setSaveState("saving");
+    db.ref(`users/${sel}/reviews/${key}`)
+      .update({ ...patch, by: me, at: Date.now() })
       .then(() => setSaveState("idle"))
       .catch(() => setSaveState("error"));
   };
   return (
-    <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 8, padding: 18, boxShadow: T.shadow }}>
-      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>주차별 총 목표량 설정</div>
-      <div style={{ fontSize: 12.5, color: T.faint, marginBottom: 16, lineHeight: 1.6 }}>
-        숫자를 넣으면 신입 화면에 누적 게이지·계획 합계 검증·페이스 점검이 표시돼요.
-        비우면 그 영역은 표시하지 않아요. 입력하는 즉시 전원에게 반영됩니다.
+    <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 8, padding: 18 }}>
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>평가 입력</div>
+      <div style={{ fontSize: 12.5, color: T.faint, marginBottom: 14, lineHeight: 1.6 }}>
+        10점 만점 + 코멘트. 입력칸 밖을 누르면 자동 저장되고, 신입 본인 화면의 평가 카드에 바로 표시돼요.
       </div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 6, paddingLeft: 52 }}>
-        {AREA_IDS.map((a) => (
-          <div key={a} style={{ flex: 1, textAlign: "center", fontSize: 12, fontWeight: 700, color: T.sub }}>
-            {AREA_LABEL[a]}
-          </div>
-        ))}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+        {names.map((n) => {
+          const active = sel === n;
+          return (
+            <button
+              key={n}
+              onClick={() => setSel(n)}
+              style={{
+                fontFamily: FONT,
+                fontSize: 13.5,
+                fontWeight: 700,
+                border: active ? `1.5px solid ${T.blue}` : "1.5px solid transparent",
+                borderRadius: 999,
+                padding: "7px 13px",
+                background: active ? T.blueSoft : T.cardSoft,
+                color: active ? T.blue : T.text,
+                cursor: "pointer",
+              }}
+            >
+              👤 {n}
+              {users[n].mentor ? ` · ${users[n].mentor}` : ""}
+            </button>
+          );
+        })}
+        {names.length === 0 && <span style={{ fontSize: 13, color: T.faint }}>등록된 신입이 없어요.</span>}
       </div>
-      {WEEKS.map((w) => (
-        <div key={w.no} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0" }}>
-          <div style={{ width: 44, fontSize: 13, fontWeight: 800, color: T[WEEK_COLOR[w.no]], flexShrink: 0 }}>{w.no}주차</div>
-          {AREA_IDS.map((a) => (
-            <TargetInput key={a} T={T} value={(targets["w" + w.no] || {})[a] || 0} onCommit={(n) => save(w.no, a, n)} />
-          ))}
-        </div>
-      ))}
-      <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 8, background: T.blueSoft, color: T.blue, fontSize: 12.5, fontWeight: 600, lineHeight: 1.6 }}>
-        예: 1주차 PPT에 98을 넣으면 신입의 1주차 화면에 "계획 합계 __/98"과 누적 게이지가 나타나요
-      </div>
+      {!sel && names.length > 0 && <div style={{ fontSize: 13.5, color: T.faint }}>평가할 신입을 선택하세요.</div>}
+      {cur &&
+        REVIEW_KEYS.map((rk, i) => {
+          const r = (cur.reviews || {})[rk.key] || {};
+          return (
+            <div key={rk.key} style={{ padding: "11px 0", borderBottom: i === REVIEW_KEYS.length - 1 ? "none" : `1px solid ${T.line}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
+                <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: rk.key === "final" ? T.orange : T[WEEK_COLOR[i + 1]] }}>
+                  {rk.label}
+                </span>
+                <ScoreInput T={T} value={r.score !== undefined ? r.score : null} onCommit={(n) => save(rk.key, { score: n })} />
+                <span style={{ fontSize: 12.5, color: T.faint }}>/ 10</span>
+                {r.by && <span style={{ marginLeft: "auto", fontSize: 11.5, color: T.faint }}>{r.by}</span>}
+              </div>
+              <CommentInput T={T} value={r.comment || ""} onCommit={(t) => save(rk.key, { comment: t })} />
+            </div>
+          );
+        })}
     </div>
+  );
+}
+
+// 자유 텍스트 입력 (칸 밖 클릭/Enter 시 저장)
+function TextCommit({ T, value, placeholder, onCommit, small }) {
+  const [v, setV] = useState(value || "");
+  useEffect(() => setV(value || ""), [value]);
+  const commit = () => {
+    const t = v.trim();
+    if (t !== (value || "")) onCommit(t);
+  };
+  return (
+    <input
+      type="text"
+      value={v}
+      placeholder={placeholder}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+      style={{
+        flex: 1,
+        minWidth: 0,
+        fontFamily: FONT,
+        fontSize: small ? 13 : 14,
+        fontWeight: 600,
+        border: `1.5px solid ${T.inputBorder}`,
+        borderRadius: 8,
+        padding: small ? "7px 9px" : "9px 10px",
+        background: T.cardSoft,
+        color: T.text,
+        outline: "none",
+      }}
+    />
+  );
+}
+
+// 점수 입력 (0~10, 비우면 평가 취소)
+function ScoreInput({ T, value, onCommit }) {
+  const has = value !== null && value !== undefined;
+  const [v, setV] = useState(has ? String(value) : "");
+  useEffect(() => {
+    setV(value !== null && value !== undefined ? String(value) : "");
+  }, [value]);
+  const commit = () => {
+    if (v.trim() === "") {
+      if (has) onCommit(null);
+      return;
+    }
+    let n = parseInt(v, 10);
+    if (isNaN(n)) {
+      setV(has ? String(value) : "");
+      return;
+    }
+    n = Math.max(0, Math.min(10, n));
+    setV(String(n));
+    if (n !== value) onCommit(n);
+  };
+  return (
+    <input
+      type="number"
+      min="0"
+      max="10"
+      value={v}
+      placeholder="—"
+      onChange={(e) => setV(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+      style={{
+        width: 60,
+        fontFamily: FONT,
+        fontSize: 14,
+        fontWeight: 800,
+        textAlign: "center",
+        border: `1.5px solid ${T.inputBorder}`,
+        borderRadius: 8,
+        padding: "7px 2px",
+        background: T.cardSoft,
+        color: T.text,
+        outline: "none",
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
+// 코멘트 입력 (칸 밖 클릭 시 저장)
+function CommentInput({ T, value, onCommit }) {
+  const [v, setV] = useState(value);
+  useEffect(() => setV(value), [value]);
+  const commit = () => {
+    if (v.trim() !== (value || "")) onCommit(v.trim() || null);
+  };
+  return (
+    <textarea
+      value={v}
+      placeholder="코멘트 (신입 본인에게 보여요)"
+      onChange={(e) => setV(e.target.value)}
+      onBlur={commit}
+      style={{
+        width: "100%",
+        minHeight: 54,
+        resize: "vertical",
+        fontFamily: FONT,
+        fontSize: 13.5,
+        lineHeight: 1.6,
+        border: `1.5px solid ${T.inputBorder}`,
+        borderRadius: 8,
+        padding: "9px 11px",
+        background: T.cardSoft,
+        color: T.text,
+        outline: "none",
+      }}
+    />
   );
 }
 
