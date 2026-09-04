@@ -2129,17 +2129,15 @@ function GoalRow({ g, T, accent, onToggle, onActual, onUpdate, onRemove }) {
       )}
       <button
         onClick={startEdit}
-        aria-label="목표 수정"
-        style={{ border: "none", background: "transparent", color: T.faint, cursor: "pointer", fontSize: 13, padding: 4, flexShrink: 0 }}
+        style={{ border: "none", background: "transparent", color: T.sub, cursor: "pointer", fontSize: 12, fontWeight: 700, padding: "4px 3px", flexShrink: 0, textDecoration: "underline", textUnderlineOffset: 2 }}
       >
-        ✏️
+        수정
       </button>
       <button
         onClick={onRemove}
-        aria-label="목표 삭제"
-        style={{ border: "none", background: "transparent", color: T.faint, cursor: "pointer", fontSize: 13, padding: 4, flexShrink: 0 }}
+        style={{ border: "none", background: "transparent", color: T.faint, cursor: "pointer", fontSize: 12, fontWeight: 700, padding: "4px 3px", flexShrink: 0, textDecoration: "underline", textUnderlineOffset: 2 }}
       >
-        ✕
+        삭제
       </button>
     </div>
   );
