@@ -696,10 +696,10 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
       .catch(() => setSaveState("error"));
   };
 
-  const addLog = (dayKey, time, text) => {
+  const addLog = (dayKey, start, end, text) => {
     if (!text.trim()) return;
     const list = logs[dayKey] ? [...logs[dayKey]] : [];
-    list.push({ time: time || "--:--", text: text.trim() });
+    list.push({ time: start || "--:--", end: end || null, text: text.trim() });
     list.sort((a, b) => a.time.localeCompare(b.time));
     setLogs({ ...logs, [dayKey]: list });
     saveLogs(dayKey, list);
@@ -1346,7 +1346,10 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                         )}
                         {dayLogs.map((l, i) => (
                           <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 2px", borderBottom: `1px solid ${T.line}` }}>
-                            <span style={{ fontSize: 13, fontWeight: 700, color: T.blue, width: 46, flexShrink: 0 }}>{l.time}</span>
+                            <span style={{ fontSize: 12.5, fontWeight: 700, color: T.blue, width: l.end ? 92 : 46, flexShrink: 0 }}>
+                              {l.time}
+                              {l.end ? ` ~ ${l.end}` : ""}
+                            </span>
                             <span style={{ fontSize: 14, flex: 1, lineHeight: 1.5 }}>{l.text}</span>
                             <button
                               onClick={() => removeLog(d.key, i)}
@@ -1357,7 +1360,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                             </button>
                           </div>
                         ))}
-                        <LogInput onAdd={(time, text) => addLog(d.key, time, text)} T={T} />
+                        <LogInput onAdd={(start, end, text) => addLog(d.key, start, end, text)} T={T} />
                       </div>
                     )}
                   </div>
@@ -1680,12 +1683,14 @@ function SummaryRow({ cat, text, last, CAT_STYLE, T }) {
 }
 
 function LogInput({ onAdd, T }) {
-  const [time, setTime] = useState("");
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
   const [text, setText] = useState("");
   const submit = () => {
     if (!text.trim()) return;
-    onAdd(time, text);
-    setTime("");
+    onAdd(start, end, text);
+    setStart("");
+    setEnd("");
     setText("");
   };
   const inputStyle = {
@@ -1698,34 +1703,42 @@ function LogInput({ onAdd, T }) {
     color: T.text,
     outline: "none",
   };
+  const labelStyle = { fontSize: 12, fontWeight: 700, color: T.faint, flexShrink: 0 };
   return (
-    <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-      <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={{ ...inputStyle, width: 108, colorScheme: "dark light" }} />
-      <input
-        type="text"
-        value={text}
-        placeholder="한 일을 입력하세요"
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && submit()}
-        style={{ ...inputStyle, flex: 1, padding: "10px 12px" }}
-      />
-      <button
-        onClick={submit}
-        style={{
-          fontFamily: FONT,
-          fontSize: 14,
-          fontWeight: 700,
-          border: "none",
-          borderRadius: 12,
-          padding: "10px 16px",
-          background: T.blue,
-          color: "#fff",
-          cursor: "pointer",
-          flexShrink: 0,
-        }}
-      >
-        추가
-      </button>
+    <div style={{ marginTop: 12 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+        <span style={labelStyle}>시작</span>
+        <input type="time" value={start} onChange={(e) => setStart(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: 0, colorScheme: "dark light" }} />
+        <span style={labelStyle}>마감</span>
+        <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: 0, colorScheme: "dark light" }} />
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          type="text"
+          value={text}
+          placeholder="한 일을 입력하세요"
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+          style={{ ...inputStyle, flex: 1, minWidth: 0, padding: "10px 12px" }}
+        />
+        <button
+          onClick={submit}
+          style={{
+            fontFamily: FONT,
+            fontSize: 14,
+            fontWeight: 700,
+            border: "none",
+            borderRadius: 12,
+            padding: "10px 16px",
+            background: T.blue,
+            color: "#fff",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          추가
+        </button>
+      </div>
     </div>
   );
 }
