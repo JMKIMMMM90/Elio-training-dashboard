@@ -835,6 +835,12 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
     saveGoals(dayKey, areaId, list);
   };
 
+  const updateGoal = (dayKey, areaId, idx, patch) => {
+    const list = [...asList(goals[dayKey] && goals[dayKey][areaId])];
+    list[idx] = { ...list[idx], ...patch };
+    saveGoals(dayKey, areaId, list);
+  };
+
   const removeGoal = (dayKey, areaId, idx) => {
     const list = asList(goals[dayKey] && goals[dayKey][areaId]).filter((_, i) => i !== idx);
     saveGoals(dayKey, areaId, list);
@@ -1515,6 +1521,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                                       accent={cs.fg}
                                       onToggle={() => toggleGoal(d.key, t.id, gi)}
                                       onActual={(n) => setGoalActual(d.key, t.id, gi, n)}
+                                      onUpdate={(patch) => updateGoal(d.key, t.id, gi, patch)}
                                       onRemove={() => removeGoal(d.key, t.id, gi)}
                                     />
                                   ))}
@@ -2002,10 +2009,74 @@ function CheckBox({ on, T }) {
   );
 }
 
-// 하루 목표 한 줄: 수량형(목표수 있음)은 달성 수 입력, 체크형은 체크
-function GoalRow({ g, T, accent, onToggle, onActual, onRemove }) {
+// 하루 목표 한 줄: 수량형(목표수 있음)은 달성 수 입력, 체크형은 체크. ✏️로 내용·목표수 수정.
+function GoalRow({ g, T, accent, onToggle, onActual, onUpdate, onRemove }) {
   const isCount = g.target > 0;
   const pct = goalRawPct(g);
+  const [editing, setEditing] = useState(false);
+  const [et, setEt] = useState("");
+  const [etg, setEtg] = useState("");
+
+  const startEdit = () => {
+    setEt(g.text);
+    setEtg(isCount ? String(g.target) : "");
+    setEditing(true);
+  };
+  const saveEdit = () => {
+    const t = et.trim();
+    if (!t) return;
+    const patch = { text: t };
+    if (isCount) patch.target = Math.max(1, parseInt(etg, 10) || g.target);
+    onUpdate(patch);
+    setEditing(false);
+  };
+
+  const editInputStyle = {
+    fontFamily: FONT,
+    fontSize: 13.5,
+    border: `1.5px solid ${T.inputBorder}`,
+    borderRadius: 8,
+    padding: "7px 9px",
+    background: T.card,
+    color: T.text,
+    outline: "none",
+  };
+
+  if (editing)
+    return (
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, padding: "7px 0 7px 2px", borderTop: `1px solid ${T.line}` }}>
+        <input
+          type="text"
+          value={et}
+          onChange={(e) => setEt(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && saveEdit()}
+          style={{ ...editInputStyle, flex: 1, minWidth: 120 }}
+        />
+        {isCount && (
+          <input
+            type="number"
+            min="1"
+            value={etg}
+            onChange={(e) => setEtg(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && saveEdit()}
+            style={{ ...editInputStyle, width: 62, textAlign: "center", flexShrink: 0 }}
+          />
+        )}
+        <button
+          onClick={saveEdit}
+          style={{ fontFamily: FONT, fontSize: 12.5, fontWeight: 700, border: "none", borderRadius: 8, padding: "7px 11px", background: T.blue, color: "#fff", cursor: "pointer", flexShrink: 0 }}
+        >
+          저장
+        </button>
+        <button
+          onClick={() => setEditing(false)}
+          style={{ fontFamily: FONT, fontSize: 12.5, fontWeight: 700, border: "none", borderRadius: 8, padding: "7px 9px", background: "transparent", color: T.faint, cursor: "pointer", flexShrink: 0 }}
+        >
+          취소
+        </button>
+      </div>
+    );
+
   return (
     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "7px 0 7px 2px", borderTop: `1px solid ${T.line}` }}>
       {isCount ? (
@@ -2056,6 +2127,13 @@ function GoalRow({ g, T, accent, onToggle, onActual, onRemove }) {
           </span>
         </>
       )}
+      <button
+        onClick={startEdit}
+        aria-label="목표 수정"
+        style={{ border: "none", background: "transparent", color: T.faint, cursor: "pointer", fontSize: 13, padding: 4, flexShrink: 0 }}
+      >
+        ✏️
+      </button>
       <button
         onClick={onRemove}
         aria-label="목표 삭제"
