@@ -1275,17 +1275,18 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               const r = reviews["w" + w.no] || {};
               const openW = openScoreWeek === w.no;
               const lastDay = SCHEDULE.find((d) => d.week === w.no && d.isLast);
-              const subDetail = [
-                { id: "report-ppt", label: "PPT 작성본" },
-                { id: "report-book", label: "책 서평" },
-              ]
-                .map((it) => {
-                  const m = submissions[`${lastDay.key}:${it.id}`];
-                  if (m && m.at) return `${it.label} ${submitBonus(w.no, m.at).label}`;
-                  const nowPts = submitBonus(w.no, Date.now()).pts;
-                  return nowPts >= 0 ? `${it.label} 미제출 (지금 내면 ${nowPts > 0 ? `+${nowPts}` : "0"})` : `${it.label} 미제출 -5`;
-                })
-                .join(" · ");
+              // 제출 가점 정보 (해당 과정 섹션 아래에 표시)
+              const subInfo = (id) => {
+                const m = submissions[`${lastDay.key}:${id}`];
+                if (m && m.at) {
+                  const b = submitBonus(w.no, m.at);
+                  return { pts: b.pts, text: `제출 가점 ${b.label}` };
+                }
+                const nowPts = submitBonus(w.no, Date.now()).pts;
+                return nowPts >= 0
+                  ? { pts: null, text: `제출 전 — 지금 내면 가점 ${nowPts > 0 ? `+${nowPts}` : "0"}` }
+                  : { pts: -5, text: "미제출 — 가점 -5" };
+              };
               return (
                 <div key={w.no} style={{ borderBottom: `1px solid ${T.line}` }}>
                   <button
@@ -1307,19 +1308,55 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                     </span>
                     <span style={{ marginLeft: "auto", fontSize: 11, color: T.faint, flexShrink: 0, transform: openW ? "rotate(180deg)" : "none", transition: "transform .15s" }}>▾</span>
                   </button>
-                  {openW && (
-                    <div style={{ padding: "0 0 10px 54px", fontSize: 12, color: T.sub, lineHeight: 1.9 }}>
-                      <div>
-                        <span style={{ fontWeight: 800, color: T.blue }}>자동 집계</span> — PPT 목표달성 {rv.pptAuto}/20 · 독서 목표달성 {rv.bookAuto}/10
-                      </div>
-                      <div>
-                        <span style={{ fontWeight: 800, color: T.text }}>담당자 평가{rv.entered ? "" : " (대기 — 남은 배점)"}</span> — 정확성 {r.acc != null ? r.acc : "─"}/20 · 서평 {r.essay != null ? r.essay : "─"}/10 · 책 TEST {r.bookTest != null ? r.bookTest : "─"}/10 · 보고서 TEST {r.test != null ? r.test : "─"}/30
-                      </div>
-                      <div>
-                        <span style={{ fontWeight: 800, color: rv.bonus >= 0 ? T.orange : T.red }}>제출 가점 {rv.bonus > 0 ? `+${rv.bonus}` : rv.bonus}</span> — {subDetail}
-                      </div>
-                    </div>
-                  )}
+                  {openW &&
+                    (() => {
+                      const bar = (label, val, max, color) => (
+                        <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
+                          <span style={{ width: 100, fontSize: 11.5, fontWeight: 700, color: T.sub, flexShrink: 0 }}>{label}</span>
+                          <div style={{ flex: 1, height: 10, borderRadius: 5, background: T.cardSoft, overflow: "hidden" }}>
+                            <div style={{ width: `${val != null ? Math.min(100, (val / max) * 100) : 0}%`, height: "100%", background: color, borderRadius: 5 }} />
+                          </div>
+                          <span style={{ width: 50, textAlign: "right", fontSize: 11.5, fontWeight: 800, color: val != null ? color : T.faint, flexShrink: 0 }}>
+                            {val != null ? val : "─"}/{max}
+                          </span>
+                        </div>
+                      );
+                      const subLine = (info) => (
+                        <div style={{ fontSize: 11.5, fontWeight: 700, marginTop: 2, color: info.pts > 0 ? T.green : info.pts != null && info.pts < 0 ? T.red : T.orange }}>
+                          {info.text}
+                        </div>
+                      );
+                      const pptSum = Math.round((rv.pptAuto + (r.acc || 0)) * 10) / 10;
+                      const bookSum = Math.round(((r.essay || 0) + rv.bookAuto + (r.bookTest || 0)) * 10) / 10;
+                      const sec = { fontSize: 12, fontWeight: 800, marginBottom: 2 };
+                      return (
+                        <div style={{ padding: "2px 0 12px 12px", display: "flex", flexDirection: "column", gap: 12 }}>
+                          <div>
+                            <div style={{ ...sec, color: T.blue }}>
+                              📊 PPT <span style={{ color: T.faint, fontWeight: 700 }}>소계 {pptSum}/40</span>
+                            </div>
+                            {bar("목표달성률 (자동)", rv.pptAuto, 20, T.blue)}
+                            {bar("정확성 (담당자)", r.acc != null ? r.acc : null, 20, T.blue)}
+                            {subLine(subInfo("report-ppt"))}
+                          </div>
+                          <div>
+                            <div style={{ ...sec, color: T.purple }}>
+                              📚 서평 <span style={{ color: T.faint, fontWeight: 700 }}>소계 {bookSum}/30</span>
+                            </div>
+                            {bar("서평 평가 (담당자)", r.essay != null ? r.essay : null, 10, T.purple)}
+                            {bar("목표달성률 (자동)", rv.bookAuto, 10, T.purple)}
+                            {bar("책 TEST (담당자)", r.bookTest != null ? r.bookTest : null, 10, T.purple)}
+                            {subLine(subInfo("report-book"))}
+                          </div>
+                          <div>
+                            <div style={{ ...sec, color: T.w2 }}>
+                              📋 보고서 <span style={{ color: T.faint, fontWeight: 700 }}>소계 {r.test != null ? r.test : 0}/30</span>
+                            </div>
+                            {bar("지식 TEST (담당자)", r.test != null ? r.test : null, 30, T.w2)}
+                          </div>
+                        </div>
+                      );
+                    })()}
                 </div>
               );
             })}
