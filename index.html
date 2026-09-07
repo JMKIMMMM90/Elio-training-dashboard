@@ -798,7 +798,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
 
   const T = THEMES[theme];
   const [view, setView] = useState("home"); // home | guide | plan | score (+ 관리자: all | review | settings)
-  const [planMode, setPlanMode] = useState("calendar"); // 목표관리 탭 내부: calendar | week
+  const [planMode, setPlanMode] = useState("week"); // 목표관리 탭 내부: week(기본) | calendar
   const [week, setWeek] = useState(defaultWeek);
   const [checks, setChecks] = useState({});
   const [logs, setLogs] = useState({});
@@ -1601,8 +1601,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
         {view === "plan" && (
           <div style={{ display: "flex", gap: 2, margin: "4px 0 16px", background: theme === "dark" ? T.card : T.cardSoft, borderRadius: 999, padding: 3 }}>
             {[
-              { id: "calendar", label: "📅 달력" },
               { id: "week", label: "✅ 주차별 목표" },
+              { id: "calendar", label: "📅 달력" },
             ].map((v) => {
               const active = planMode === v.id;
               return (
