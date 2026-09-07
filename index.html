@@ -1176,11 +1176,29 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           <div style={{ fontSize: 15, fontWeight: 800 }}>Road to INITIAN</div>
           {!isStaff ? (
             <>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", margin: "8px 0 16px" }}>
-                <span style={{ fontSize: 42, fontWeight: 800, color: T.blue, letterSpacing: -1, lineHeight: 1 }}>{cumu.cum}</span>
-                <span style={{ fontSize: 18, fontWeight: 700, color: T.sub }}>/ 500점</span>
+              {(() => {
+                const curW = cumu.weeks[defaultWeek - 1];
+                const wc = T[WEEK_COLOR[defaultWeek]];
+                return (
+                  <>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: wc, margin: "12px 0 4px" }}>
+                      {defaultWeek}주차 점수 {curW.entered ? "· 평가 완료" : "· 실시간"}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                      <span style={{ fontSize: 46, fontWeight: 800, color: wc, letterSpacing: -1, lineHeight: 1 }}>
+                        {curW.entered ? curW.total : curW.live}
+                      </span>
+                      <span style={{ fontSize: 18, fontWeight: 700, color: T.sub }}>/ 100점</span>
+                    </div>
+                  </>
+                );
+              })()}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 800, color: T.sub }}>
+                  누적 <span style={{ color: T.blue }}>{cumu.cum} / 500</span>
+                </span>
                 {cumu.bonus !== 0 && (
-                  <span style={{ fontSize: 14, fontWeight: 800, color: cumu.bonus > 0 ? T.green : T.red, background: cumu.bonus > 0 ? T.greenSoft : T.redSoft, borderRadius: 8, padding: "3px 10px" }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: cumu.bonus > 0 ? T.green : T.red, background: cumu.bonus > 0 ? T.greenSoft : T.redSoft, borderRadius: 8, padding: "2px 9px" }}>
                     가점 {cumu.bonus > 0 ? `+${cumu.bonus}` : cumu.bonus}
                   </span>
                 )}
