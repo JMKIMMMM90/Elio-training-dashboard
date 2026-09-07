@@ -36,6 +36,8 @@ git add → commit → push. 별도 배포 명령 없음.
     통일(보너스 금지). 누적은 calcCumulative(평가 전 주차는 실시간 자동점수로 합산).
   - 주차 100점: PPT 40(달성률 20 자동 + 정확성 20) /
     책 서평 30(서평[독창성·주관·논리] 10 + 달성률 10 자동 + 책 TEST 10) / 보고서 30(TEST 30).
+  - 독서 달성률(10)은 제출 중심: 책 서평 제출 시 만점 인정, 미제출 시 일별 독서 목표 기반.
+    (PPT 장표 달성률 20은 수량 실측 그대로 — 제출로 만점 인정하지 않음)
   - FINAL PPT TEST(calcFinalTest): 점수 = min(100, 장수/기준장수×100) − 오류수×감점단가.
     기준장수·감점단가는 config/finalTest{baseSlides, perError}(관리 탭에서 설정, 기본 20장/-2점).
     담당자 입력은 reviews/finalTest = {slides, errors, by, at} — 장수·오류 수만 입력하면 자동 채점.
