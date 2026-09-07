@@ -33,6 +33,11 @@ git add → commit → push. 별도 배포 명령 없음.
     편의상 숨김이지 보안 아님. 관리자·담당자는 전체 현황 목록에서 제외.
   - 평가: users/<신입>/reviews/{w1~w4,final} = {score(10점 만점), comment, by, at}.
     저장 즉시 신입 본인 화면의 "교육 평가" 카드에 공개됨. users/<신입>/mentor = 담당자명.
+  - 제출물 첨부: Firebase Storage(Blaze, 버킷 US-EAST1 무료 위치, 규칙 공개) 사용.
+    파일은 storage의 submissions/<이름>/<dayKey:taskId>/에, 메타데이터는
+    users/<이름>/submissions/<dayKey:taskId> = {fileName, size, path, url, at}에 저장.
+    첨부 시 해당 제출 항목 자동 체크, 재첨부는 교체, 100MB 제한. 평가 탭에서
+    신입별 제출 파일 목록·다운로드 제공.
   - 총량이 설정된 영역은 주차 화면에 누적 게이지 / 계획 합계 검증(부족·일치·초과) /
     페이스 점검(오늘까지 계획 누적 vs 실제)이 표시됨. 전체 현황에도 사람별 누적·페이스 표시.
   - firebaseConfig는 index.html 상단에 있음 (프로젝트: elio-training, 소유: 대표님 구글 계정).

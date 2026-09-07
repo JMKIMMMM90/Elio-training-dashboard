@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #f5f6f8; font-variant-numeric: tabular-nums; }
@@ -35,6 +36,7 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
+const storage = firebase.storage(); // 제출물 파일 저장소
 
 const { useState, useEffect, useMemo } = React;
 
@@ -243,6 +245,13 @@ function fmtJoin(d) {
   const p = d.split("-");
   if (p.length !== 3) return "";
   return `${p[0].slice(2)}.${+p[1]}.${+p[2]} 입사`;
+}
+
+// 파일 크기 표시: 1234567 → "1.2MB"
+function fmtSize(n) {
+  if (!n) return "";
+  if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))}KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)}MB`;
 }
 
 function todayStr() {
@@ -728,6 +737,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   const [mentor, setMentor] = useState("");
   const [rank, setRank] = useState("");
   const [reviews, setReviews] = useState({});
+  const [submissions, setSubmissions] = useState({});
+  const [uploadingKey, setUploadingKey] = useState(null);
   const targets = cfg.targets || {};
   const staff = cfg.staff || {};
   const wkList = useMemo(() => mergeWeeks(cfg.weeks), [cfg]);
@@ -757,6 +768,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           setMentor(v.mentor || "");
           setRank(v.rank || "");
           setReviews(v.reviews || {});
+          setSubmissions(v.submissions || {});
         } else if (!migrated) {
           migrated = true;
           // 예전 기기별 저장(localStorage) 기록이 있으면 온라인으로 1회 이전
@@ -875,6 +887,49 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
     list.sort((a, b) => a.time.localeCompare(b.time));
     setLogs({ ...logs, [dayKey]: list });
     saveLogs(dayKey, list);
+  };
+
+  // ── 제출물 파일 첨부 (Firebase Storage) ──
+  const uploadSubmission = (dayKey, taskId, file) => {
+    const k = `${dayKey}:${taskId}`;
+    if (file.size > 100 * 1024 * 1024) {
+      alert("100MB 이하 파일만 첨부할 수 있어요. 파일이 더 크면 관리자에게 직접 전달해 주세요.");
+      return;
+    }
+    setUploadingKey(k);
+    setSaveState("saving");
+    const old = submissions[k];
+    const safeName = file.name.replace(/[#\[\]*?%]/g, "_");
+    const path = `submissions/${name}/${k}/${Date.now()}_${safeName}`;
+    const removeOld = old && old.path ? storage.ref(old.path).delete().catch(() => {}) : Promise.resolve();
+    removeOld
+      .then(() => storage.ref(path).put(file))
+      .then((snap) => snap.ref.getDownloadURL())
+      .then((url) =>
+        db.ref(`users/${name}/submissions/${k}`).set({ fileName: file.name, size: file.size, path, url, at: Date.now() })
+      )
+      .then(() => db.ref(`users/${name}/checks/${k}`).set(true)) // 첨부하면 제출 항목 자동 체크
+      .then(() => {
+        setUploadingKey(null);
+        setSaveState("idle");
+      })
+      .catch(() => {
+        setUploadingKey(null);
+        setSaveState("error");
+        alert("업로드에 실패했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.");
+      });
+  };
+
+  const deleteSubmission = (dayKey, taskId) => {
+    const k = `${dayKey}:${taskId}`;
+    const m = submissions[k];
+    if (!m) return;
+    if (!window.confirm(`첨부한 파일(${m.fileName})을 삭제할까요?`)) return;
+    setSaveState("saving");
+    (m.path ? storage.ref(m.path).delete().catch(() => {}) : Promise.resolve())
+      .then(() => db.ref(`users/${name}/submissions/${k}`).remove())
+      .then(() => setSaveState("idle"))
+      .catch(() => setSaveState("error"));
   };
 
   // ── 진행률 ──
@@ -1405,47 +1460,93 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                           if (!AREA_IDS.includes(t.id)) {
                             const k = `${d.key}:${t.id}`;
                             const on = !!checks[k];
+                            const isSubmit = t.cat === "제출";
+                            const m = isSubmit ? submissions[k] : null;
+                            const busy = uploadingKey === k;
                             return (
-                              <button
-                                key={t.id}
-                                onClick={() => toggleTask(d.key, t.id)}
-                                style={{
-                                  width: "100%",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 10,
-                                  padding: "10px 12px",
-                                  marginBottom: 6,
-                                  borderRadius: 8,
-                                  border: "none",
-                                  cursor: "pointer",
-                                  fontFamily: FONT,
-                                  textAlign: "left",
-                                  background: T.cardSoft,
-                                  opacity: on ? 0.75 : 1,
-                                  transition: "opacity .12s",
-                                }}
-                              >
-                                <CheckBox on={on} T={T} />
-                                <Chip bg={cs.bg} fg={cs.fg}>{t.cat}</Chip>
-                                <span
+                              <div key={t.id} style={{ marginBottom: 6, borderRadius: 8, background: T.cardSoft }}>
+                                <button
+                                  onClick={() => toggleTask(d.key, t.id)}
                                   style={{
-                                    fontSize: 14,
-                                    fontWeight: 600,
-                                    color: on ? T.faint : T.text,
-                                    textDecoration: on ? "line-through" : "none",
-                                    lineHeight: 1.4,
-                                    flex: 1,
+                                    width: "100%",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 10,
+                                    padding: "10px 12px",
+                                    borderRadius: 8,
+                                    border: "none",
+                                    cursor: "pointer",
+                                    fontFamily: FONT,
+                                    textAlign: "left",
+                                    background: "transparent",
+                                    opacity: on ? 0.75 : 1,
+                                    transition: "opacity .12s",
                                   }}
                                 >
-                                  {taskLabel(t, curWeek)}
-                                </span>
-                                {t.time && (
-                                  <span style={{ fontSize: 12, fontWeight: 800, color: cs.fg, flexShrink: 0, whiteSpace: "nowrap" }}>
-                                    {t.time}
+                                  <CheckBox on={on} T={T} />
+                                  <Chip bg={cs.bg} fg={cs.fg}>{t.cat}</Chip>
+                                  <span
+                                    style={{
+                                      fontSize: 14,
+                                      fontWeight: 600,
+                                      color: on ? T.faint : T.text,
+                                      textDecoration: on ? "line-through" : "none",
+                                      lineHeight: 1.4,
+                                      flex: 1,
+                                    }}
+                                  >
+                                    {taskLabel(t, curWeek)}
                                   </span>
+                                  {t.time && (
+                                    <span style={{ fontSize: 12, fontWeight: 800, color: cs.fg, flexShrink: 0, whiteSpace: "nowrap" }}>
+                                      {t.time}
+                                    </span>
+                                  )}
+                                </button>
+                                {isSubmit && (
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "0 12px 10px 44px" }}>
+                                    {busy ? (
+                                      <span style={{ fontSize: 12.5, fontWeight: 700, color: T.blue }}>⏫ 업로드 중…</span>
+                                    ) : m ? (
+                                      <>
+                                        <span style={{ fontSize: 12.5, fontWeight: 600, color: T.sub, flex: 1, minWidth: 120, overflowWrap: "anywhere", lineHeight: 1.5 }}>
+                                          📄 {m.fileName} ({fmtSize(m.size)})
+                                        </span>
+                                        <a
+                                          href={m.url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          style={{ fontSize: 12, fontWeight: 700, color: T.blue, textDecoration: "underline", textUnderlineOffset: 2, flexShrink: 0 }}
+                                        >
+                                          다운로드
+                                        </a>
+                                        <button
+                                          onClick={() => deleteSubmission(d.key, t.id)}
+                                          style={{ border: "none", background: "transparent", color: T.faint, cursor: "pointer", fontSize: 12, fontWeight: 700, padding: "2px 3px", textDecoration: "underline", textUnderlineOffset: 2, flexShrink: 0 }}
+                                        >
+                                          삭제
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <label
+                                        style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 700, color: cs.fg, background: T.card, border: `1px solid ${T.line}`, borderRadius: 999, padding: "5px 12px", cursor: "pointer" }}
+                                      >
+                                        📎 첨부하기 (HWP·Word·PPT·PDF)
+                                        <input
+                                          type="file"
+                                          accept=".hwp,.hwpx,.doc,.docx,.ppt,.pptx,.pdf"
+                                          style={{ display: "none" }}
+                                          onChange={(e) => {
+                                            const f = e.target.files[0];
+                                            if (f) uploadSubmission(d.key, t.id, f);
+                                            e.target.value = "";
+                                          }}
+                                        />
+                                      </label>
+                                    )}
+                                  </div>
                                 )}
-                              </button>
+                              </div>
                             );
                           }
 
@@ -1817,6 +1918,43 @@ function ReviewPanel({ T, me, setSaveState }) {
         {names.length === 0 && <span style={{ fontSize: 13, color: T.faint }}>등록된 신입이 없어요.</span>}
       </div>
       {!sel && names.length > 0 && <div style={{ fontSize: 13.5, color: T.faint }}>평가할 신입을 선택하세요.</div>}
+      {cur &&
+        (() => {
+          const subs = cur.submissions || {};
+          const items = SCHEDULE.filter((dd) => dd.isLast).flatMap((dd) =>
+            dd.tasks
+              .filter((tt) => tt.cat === "제출")
+              .map((tt) => ({ wk: dd.week, key: `${dd.key}:${tt.id}`, label: tt.id === "report-ppt" ? "PPT 작성본" : "독후감" }))
+          );
+          const have = items.filter((it) => subs[it.key]);
+          return (
+            <div style={{ marginBottom: 14, padding: "10px 12px", borderRadius: 8, background: T.cardSoft }}>
+              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>📎 제출 파일 {have.length}건</div>
+              {have.length === 0 && <div style={{ fontSize: 12.5, color: T.faint }}>아직 제출된 파일이 없어요.</div>}
+              {have.map((it) => {
+                const m = subs[it.key];
+                return (
+                  <div key={it.key} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "4px 0" }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 800, color: T[WEEK_COLOR[it.wk]], flexShrink: 0 }}>
+                      {it.wk}주차 {it.label}
+                    </span>
+                    <span style={{ fontSize: 12.5, color: T.sub, flex: 1, minWidth: 100, overflowWrap: "anywhere" }}>
+                      {m.fileName} ({fmtSize(m.size)})
+                    </span>
+                    <a
+                      href={m.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ fontSize: 12, fontWeight: 700, color: T.blue, textDecoration: "underline", textUnderlineOffset: 2, flexShrink: 0 }}
+                    >
+                      다운로드
+                    </a>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       {cur &&
         REVIEW_KEYS.map((rk, i) => {
           const r = (cur.reviews || {})[rk.key] || {};
