@@ -1314,18 +1314,20 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                   {openW &&
                     (() => {
                       const bar = (label, val, max, color) => (
-                        <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
-                          <span style={{ width: 100, fontSize: 11.5, fontWeight: 700, color: T.sub, flexShrink: 0 }}>{label}</span>
-                          <div style={{ flex: 1, height: 10, borderRadius: 5, background: T.cardSoft, overflow: "hidden" }}>
+                        <div key={label} style={{ padding: "4px 0" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 3 }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: T.sub, whiteSpace: "nowrap" }}>{label}</span>
+                            <span style={{ fontSize: 13, fontWeight: 800, color: val != null ? color : T.faint, whiteSpace: "nowrap" }}>
+                              {val != null ? val : "─"}/{max}
+                            </span>
+                          </div>
+                          <div style={{ height: 10, borderRadius: 5, background: T.cardSoft, overflow: "hidden" }}>
                             <div style={{ width: `${val != null ? Math.min(100, (val / max) * 100) : 0}%`, height: "100%", background: color, borderRadius: 5 }} />
                           </div>
-                          <span style={{ width: 50, textAlign: "right", fontSize: 11.5, fontWeight: 800, color: val != null ? color : T.faint, flexShrink: 0 }}>
-                            {val != null ? val : "─"}/{max}
-                          </span>
                         </div>
                       );
                       const subLine = (info) => (
-                        <div style={{ fontSize: 11.5, fontWeight: 700, marginTop: 2, color: info.pts > 0 ? T.green : info.pts != null && info.pts < 0 ? T.red : T.orange }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 4, color: info.pts > 0 ? T.green : info.pts != null && info.pts < 0 ? T.red : T.orange }}>
                           {info.text}
                         </div>
                       );
@@ -1335,7 +1337,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                       const bookSub = subInfo("report-book");
                       const bonusTag = (info) =>
                         info.pts != null && info.pts !== 0 ? ` · 가점 ${info.pts > 0 ? `+${info.pts}` : info.pts}` : "";
-                      const sec = { fontSize: 12, fontWeight: 800, marginBottom: 2 };
+                      const sec = { fontSize: 13.5, fontWeight: 800, marginBottom: 2 };
                       return (
                         <div style={{ padding: "2px 0 12px 12px", display: "flex", flexDirection: "column", gap: 12 }}>
                           <div>
