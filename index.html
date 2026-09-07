@@ -1432,16 +1432,110 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
         {/* ══════════ 교육안내 탭: 목적 → 룰 → 평가방법 → 커리큘럼 ══════════ */}
         {view === "guide" && (
           <>
-        {/* 교육 목적 */}
+        {/* 교육 목적 — 역량 중심, 담백하게 */}
         <div style={card(12)}>
           <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 8 }}>🎯 교육 목적</div>
-          <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.75 }}>
-            4주 뒤, <b style={{ color: T.text }}>엘리오 표준 보고서를 스스로 만들 수 있는 INITIAN</b>이 되는 것.
+          <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.7, marginBottom: 10 }}>이 교육이 기르는 것은 네 가지입니다.</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+            {["인내", "성실", "목표관리", "기본기"].map((k) => (
+              <span key={k} style={{ fontSize: 13, fontWeight: 800, color: T.blue, background: T.blueSoft, borderRadius: 999, padding: "5px 14px" }}>
+                {k}
+              </span>
+            ))}
+          </div>
+          <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.7 }}>
+            4주 동안 매일 계획을 세우고, 실행하고, 기록합니다. 결과물과 점수는 그 과정을 비추는 거울입니다.
+          </div>
+        </div>
+
+        {/* 3개 과정 — 과정 목표와 배점의 연결 */}
+        <div style={card(12)}>
+          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 6 }}>📦 3개 과정</div>
+          {[
+            {
+              icon: "📊",
+              name: "PPT",
+              color: "blue",
+              pts: "주당 40점 + FINAL 100점",
+              goal: "표준 장표를 짧은 시간 안에 정확하게 완성하는 실전 제작력을 기릅니다.",
+              detail: "달성률 20 (자동) · 정확성 20 · 4주차 FINAL PPT TEST 100",
+            },
+            {
+              icon: "📚",
+              name: "책 서평",
+              color: "purple",
+              pts: "주당 30점",
+              goal: "병원 경영을 보는 자기만의 관점과 논리를 만듭니다.",
+              detail: "서평(독창성·주관·논리) 10 · 달성률 10 (자동) · 책 TEST 10",
+            },
+            {
+              icon: "📋",
+              name: "프로젝트 보고서",
+              color: "w2",
+              pts: "주당 30점",
+              goal: "실제 프로젝트의 핵심 지식을 익힙니다.",
+              detail: "지식 TEST 30",
+            },
+          ].map((c, i) => (
+            <div key={c.name} style={{ padding: "11px 0", borderBottom: i === 2 ? "none" : `1px solid ${T.line}` }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                <span style={{ fontSize: 14, fontWeight: 800, color: T[c.color] }}>
+                  {c.icon} {c.name}
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 800, color: T[c.color], background: T[c.color + "Soft"], borderRadius: 8, padding: "2px 8px" }}>
+                  {c.pts}
+                </span>
+              </div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: T.text, lineHeight: 1.6, marginBottom: 3 }}>{c.goal}</div>
+              <div style={{ fontSize: 12, color: T.faint }}>{c.detail}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* 평가 구조 시각화 */}
+        <div style={card(12)}>
+          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>📐 평가 구조</div>
+          <div style={{ fontSize: 12.5, color: T.faint, marginBottom: 12 }}>
+            주차 100점 × 4 + FINAL PPT TEST 100점 = 총 500점 · 제출 가점은 만점 외 보너스
+          </div>
+
+          <div style={{ fontSize: 12, fontWeight: 700, color: T.sub, marginBottom: 5 }}>총 500점</div>
+          <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
+            {[1, 2, 3, 4].map((n) => (
+              <div key={n} style={{ flex: 1, height: 14, borderRadius: 4, background: T[WEEK_COLOR[n]], opacity: 0.85 }} />
+            ))}
+            <div style={{ flex: 1, height: 14, borderRadius: 4, background: T.orange, opacity: 0.85 }} />
+          </div>
+          <div style={{ display: "flex", gap: 3, marginBottom: 14 }}>
+            {["1주 100", "2주 100", "3주 100", "4주 100", "FINAL 100"].map((s, i) => (
+              <div key={s} style={{ flex: 1, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: i === 4 ? T.orange : T[WEEK_COLOR[i + 1]] }}>
+                {s}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ fontSize: 12, fontWeight: 700, color: T.sub, marginBottom: 5 }}>주차 100점의 구성</div>
+          <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
+            <div style={{ flex: 40, height: 14, borderRadius: 4, background: T.blue, opacity: 0.85 }} />
+            <div style={{ flex: 30, height: 14, borderRadius: 4, background: T.purple, opacity: 0.85 }} />
+            <div style={{ flex: 30, height: 14, borderRadius: 4, background: T.w2, opacity: 0.85 }} />
+          </div>
+          <div style={{ display: "flex", gap: 3, marginBottom: 12 }}>
+            <div style={{ flex: 40, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.blue }}>PPT 40</div>
+            <div style={{ flex: 30, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.purple }}>서평 30</div>
+            <div style={{ flex: 30, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.w2 }}>보고서 30</div>
+          </div>
+
+          <div style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.6, marginBottom: 12 }}>
+            FINAL PPT TEST: 1시간 내 작성 장수에 비례(기준 도달 시 100점) − 오류 1건당 감점
+          </div>
+
+          <div style={{ padding: "9px 12px", borderRadius: 8, background: T.orangeSoft, color: T.orange, fontSize: 12.5, fontWeight: 700, lineHeight: 1.7 }}>
+            🚀 제출 가점 <span style={{ fontWeight: 600 }}>(마감: 주차 마지막 날 오전 10시 · 조기 판정은 자정 기준)</span>
             <br />
-            PPT 쉐도잉 → AI 전환 → 심화 → 테스트로 이어지는 실전 장표 역량, 병원 경영 프로젝트의 기본 지식,
-            그리고 관점을 만드는 독서 — 세 축으로 훈련합니다.
+            마감 2일 전 밤 12시까지 +5 · 전날 밤 12시까지 +3 · 당일 오전 10시까지 0 · 이후 제출/미제출 -5
             <br />
-            이 대시보드에서 매일 목표를 세우고 실행을 기록하면, 점수(500점)와 담당자 피드백으로 성장이 보입니다.
+            <span style={{ fontWeight: 600 }}>PPT 작성본·책 서평 두 파일의 평균으로 계산돼요</span>
           </div>
         </div>
 
@@ -1481,42 +1575,6 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               </span>
             </div>
           ))}
-        </div>
-
-        {/* ── 평가 기준 (신입에게 상시 공개 — 목표의식용) ── */}
-        <div style={card(12)}>
-          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>📐 평가 기준</div>
-          <div style={{ fontSize: 12.5, color: T.faint, marginBottom: 10 }}>
-            총 500점 = 주차 100점 × 4 + FINAL PPT TEST 100점 · 제출 가점은 보너스 · (자동)은 매일 실시간 반영
-          </div>
-          {[
-            { cat: "PPT", pts: "40", color: "blue", items: "달성률 20 (자동) + 정확성 20" },
-            { cat: "책 서평", pts: "30", color: "purple", items: "서평(독창성·주관·논리) 10 + 달성률 10 (자동) + 책 TEST 10" },
-            { cat: "보고서", pts: "30", color: "w2", items: "지식 TEST 30" },
-            { cat: "FINAL", pts: "100", color: "orange", items: "4주차 PPT TEST — 1시간 내 작성 장수 비례(기준 도달 시 100) − 오류 1건당 감점" },
-          ].map((row) => (
-            <div key={row.cat} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${T.line}` }}>
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 800,
-                  color: T[row.color],
-                  background: T[row.color + "Soft"],
-                  borderRadius: 8,
-                  padding: "3px 9px",
-                  flexShrink: 0,
-                  minWidth: 74,
-                  textAlign: "center",
-                }}
-              >
-                {row.cat} {row.pts}점
-              </span>
-              <span style={{ fontSize: 13, fontWeight: 600, color: T.sub, lineHeight: 1.5 }}>{row.items}</span>
-            </div>
-          ))}
-          <div style={{ marginTop: 10, padding: "9px 12px", borderRadius: 8, background: T.orangeSoft, color: T.orange, fontSize: 12.5, fontWeight: 700, lineHeight: 1.6 }}>
-            🚀 제출 가점 — 2일 전까지 +5 · 전날까지 +3 · 정시 0 · 지각 -5 (마감: 마지막 날 오전 10시, PPT·서평 평균)
-          </div>
         </div>
 
         {/* 커리큘럼 */}
