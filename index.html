@@ -803,12 +803,13 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   const [view, setView] = useState("home"); // home | guide | plan | score (+ 관리자: all | review | settings)
   const [planMode, setPlanMode] = useState("week"); // 목표관리 탭 내부: week(기본) | calendar
   const [guideMode, setGuideMode] = useState("purpose"); // 교육안내 탭 내부: purpose | scoring | rules | curriculum
+  const [homeMode, setHomeMode] = useState("today"); // 홈 하단 세그먼트: today | submit | comment
   const [week, setWeek] = useState(defaultWeek);
   const [checks, setChecks] = useState({});
   const [logs, setLogs] = useState({});
   const [goals, setGoals] = useState({});
   const [openDay, setOpenDay] = useState(todayIdx >= 0 ? SCHEDULE[todayIdx].key : null);
-  const [openScoreWeek, setOpenScoreWeek] = useState(null); // 홈 내 점수 카드의 주차 드롭다운
+  const [openScoreWeek, setOpenScoreWeek] = useState(null); // 내 평가 탭의 주차 드롭다운
   const [addGoalFor, setAddGoalFor] = useState(null); // "dayKey:areaId"
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState("idle");
@@ -1169,109 +1170,91 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           </div>
         </div>
 
-        {/* ── 오늘의 미션 스트립 (홈: 오늘 상태 + 제출 카운트다운) ── */}
-        {!isStaff && view === "home" &&
-          (() => {
-            const lastDay = SCHEDULE.find((d) => d.week === defaultWeek && d.isLast);
-            const todayD = todayIdx >= 0 ? SCHEDULE[todayIdx] : null;
-            const todayPct = todayD
-              ? Math.round((todayD.tasks.reduce((s, t) => s + taskScore(checks, goals, todayD, t), 0) / todayD.tasks.length) * 100)
-              : null;
-            const wkPct = stats.per[defaultWeek] ? stats.per[defaultWeek].pct : 0;
-            const subCount = ["report-ppt", "report-book"].filter((id) => submissions[`${lastDay.key}:${id}`]).length;
-            const nowB = submitBonus(defaultWeek, Date.now());
-            const seg = { fontSize: 13, fontWeight: 700, color: T.sub, whiteSpace: "nowrap" };
-            return (
-              <div style={{ ...card(0), display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px 14px", padding: "11px 14px", marginBottom: 12 }}>
-                {todayPct !== null && (
-                  <span style={seg}>
-                    오늘 <span style={{ color: todayPct >= 100 ? T.green : T.blue, fontWeight: 800 }}>{todayPct}%</span>
-                  </span>
-                )}
-                <span style={seg}>
-                  이번 주 <span style={{ color: T.blue, fontWeight: 800 }}>{wkPct}%</span>
-                </span>
-                <span style={seg}>
-                  제출 <span style={{ color: subCount === 2 ? T.green : T.text, fontWeight: 800 }}>{subCount}/2</span>
-                </span>
-                {subCount < 2 &&
-                  (nowB.pts > 0 ? (
-                    <span style={{ ...seg, color: T.orange }}>지금 제출하면 🚀+{nowB.pts}점</span>
-                  ) : nowB.pts === 0 ? (
-                    <span style={{ ...seg, color: T.orange }}>마감 오늘 오전 10시 — 정시 제출하세요</span>
-                  ) : (
-                    <span style={{ ...seg, color: T.red }}>⚠️ 마감 지남 — 미제출·지각 -5점</span>
-                  ))}
-              </div>
-            );
-          })()}
-
-        {/* ── Road to INITIAN (홈): 500점 누적 게이지 + 할 일 진행률 ── */}
+        {/* ── Road to INITIAN (홈 히어로): 누적 큰 숫자 + 5구간 게이지 ── */}
         {view === "home" && (
         <div style={card()}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10, flexWrap: "wrap", gap: 4 }}>
-            <span style={{ fontSize: 15, fontWeight: 800 }}>Road to INITIAN</span>
-            {!isStaff ? (
-              <span style={{ fontSize: 13, fontWeight: 800, color: T.blue }}>
-                누적 {cumu.cum} / 500
+          <div style={{ fontSize: 15, fontWeight: 800 }}>Road to INITIAN</div>
+          {!isStaff ? (
+            <>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", margin: "8px 0 16px" }}>
+                <span style={{ fontSize: 42, fontWeight: 800, color: T.blue, letterSpacing: -1, lineHeight: 1 }}>{cumu.cum}</span>
+                <span style={{ fontSize: 18, fontWeight: 700, color: T.sub }}>/ 500점</span>
                 {cumu.bonus !== 0 && (
-                  <span style={{ color: cumu.bonus > 0 ? T.green : T.red }}> · 가점 {cumu.bonus > 0 ? `+${cumu.bonus}` : cumu.bonus}</span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: cumu.bonus > 0 ? T.green : T.red, background: cumu.bonus > 0 ? T.greenSoft : T.redSoft, borderRadius: 8, padding: "3px 10px" }}>
+                    가점 {cumu.bonus > 0 ? `+${cumu.bonus}` : cumu.bonus}
+                  </span>
                 )}
-              </span>
-            ) : (
-              <span style={{ fontSize: 13, color: T.faint }}>{Math.round(stats.all.done)} / {stats.all.total} 완료</span>
-            )}
-          </div>
-          {!isStaff && (
-            <div style={{ display: "flex", gap: 5, marginBottom: 14 }}>
-              {[
-                ...cumu.weeks.map((x, i) => ({
-                  label: `${i + 1}주`,
-                  color: T[WEEK_COLOR[i + 1]],
-                  val: x.entered ? x.total : x.live,
-                  solid: x.entered,
-                })),
-                { label: "FINAL", color: T.orange, val: cumu.ft.entered ? cumu.ft.score : 0, solid: cumu.ft.entered },
-              ].map((s) => (
-                <div key={s.label} style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ height: 8, borderRadius: 4, background: T.cardSoft, overflow: "hidden" }}>
-                    <div style={{ width: `${Math.min(100, Math.max(0, s.val))}%`, height: "100%", background: s.color, opacity: s.solid ? 1 : 0.45, borderRadius: 4 }} />
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: T.faint }}>{s.label}</span>
-                    <span style={{ fontSize: 10, fontWeight: 800, color: s.color }}>{Math.round(s.val)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {!isStaff && (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: T.sub }}>할 일 진행률</span>
-              <span style={{ fontSize: 12, color: T.faint }}>{Math.round(stats.all.done)} / {stats.all.total} 완료</span>
-            </div>
-          )}
-          <Bar pct={stats.all.pct} h={10} T={T} />
-          <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-            {WEEKS.map((w) => (
-              <div key={w.no} style={{ flex: 1, textAlign: "center" }}>
-                <div style={{ fontSize: 12, color: T[WEEK_COLOR[w.no]], fontWeight: 700, marginBottom: 2 }}>{w.no}주차</div>
-                <div style={{ fontSize: 11, color: T.faint, marginBottom: 4 }}>{w.range.replace(/\([^)]*\)/g, "")}</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: stats.per[w.no].pct === 100 ? T.green : T.text }}>
-                  {stats.per[w.no].pct}%
-                </div>
               </div>
-            ))}
-          </div>
+              <div style={{ display: "flex", gap: 5 }}>
+                {[
+                  ...cumu.weeks.map((x, i) => ({
+                    label: `${i + 1}주`,
+                    color: T[WEEK_COLOR[i + 1]],
+                    val: x.entered ? x.total : x.live,
+                    solid: x.entered,
+                  })),
+                  { label: "FINAL", color: T.orange, val: cumu.ft.entered ? cumu.ft.score : 0, solid: cumu.ft.entered },
+                ].map((s) => (
+                  <div key={s.label} style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ height: 12, borderRadius: 6, background: T.cardSoft, overflow: "hidden" }}>
+                      <div style={{ width: `${Math.min(100, Math.max(0, s.val))}%`, height: "100%", background: s.color, opacity: s.solid ? 1 : 0.45, borderRadius: 6 }} />
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: T.faint }}>{s.label}</span>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: s.color }}>{Math.round(s.val)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: 13, color: T.faint, marginTop: 6 }}>{Math.round(stats.all.done)} / {stats.all.total} 완료</div>
+          )}
         </div>
-
         )}
 
-        {/* ── 홈: 내 점수 요약 (실시간, 상세·코멘트는 내 평가 탭) ── */}
+        {/* ── 홈 하단 세그먼트 탭: 오늘 할 일 | 제출함 | 코멘트 ── */}
         {view === "home" && (
+          <div style={{ display: "flex", gap: 2, margin: "16px 0 0", background: theme === "dark" ? T.card : T.cardSoft, borderRadius: 999, padding: 3 }}>
+            {[
+              { id: "today", label: "📌 오늘 할 일" },
+              { id: "submit", label: "📎 제출함" },
+              { id: "comment", label: "💬 코멘트" },
+            ].map((v) => {
+              const active = homeMode === v.id;
+              return (
+                <button
+                  key={v.id}
+                  onClick={() => setHomeMode(v.id)}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    padding: "10px 0",
+                    borderRadius: 999,
+                    border: "none",
+                    cursor: "pointer",
+                    fontFamily: FONT,
+                    fontSize: 13.5,
+                    fontWeight: 700,
+                    whiteSpace: "nowrap",
+                    background: active ? (theme === "dark" ? T.cardSoft : T.card) : "transparent",
+                    color: active ? T.text : T.sub,
+                    boxShadow: active && theme !== "dark" ? "0 1px 3px rgba(23,25,28,0.12)" : "none",
+                    transition: "background .15s, color .15s",
+                  }}
+                >
+                  {v.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── 내 평가 탭: 주차별 드롭다운 상세 + 추이 (홈은 누적 요약만) ── */}
+        {view === "score" && (
           <div style={card(12)}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-              <span style={{ fontSize: 15, fontWeight: 700 }}>📋 내 점수</span>
+              <span style={{ fontSize: 16, fontWeight: 800 }}>📋 내 점수</span>
               {mentor && <span style={{ fontSize: 13, fontWeight: 700, color: T.sub }}>담당 {mentor}</span>}
             </div>
             {WEEKS.map((w, i) => {
@@ -1297,17 +1280,17 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                     onClick={() => setOpenScoreWeek(openW ? null : w.no)}
                     style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "8px 0", flexWrap: "wrap", background: "transparent", border: "none", cursor: "pointer", fontFamily: FONT, textAlign: "left" }}
                   >
-                    <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T[WEEK_COLOR[w.no]] }}>{w.no}주차</span>
+                    <span style={{ width: 48, fontSize: 14, fontWeight: 800, flexShrink: 0, color: T[WEEK_COLOR[w.no]] }}>{w.no}주차</span>
                     {rv.entered ? (
-                      <span style={{ fontSize: 13, fontWeight: 800, color: T.green, background: T.greenSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: T.green, background: T.greenSoft, borderRadius: 8, padding: "3px 10px", flexShrink: 0 }}>
                         {rv.total}점{rv.bonus !== 0 ? ` (${rv.bonus > 0 ? "🚀+" : "⚠️"}${rv.bonus})` : ""}
                       </span>
                     ) : (
-                      <span style={{ fontSize: 13, fontWeight: 800, color: T.blue, background: T.blueSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: T.blue, background: T.blueSoft, borderRadius: 8, padding: "3px 10px", flexShrink: 0 }}>
                         실시간 {rv.live}점
                       </span>
                     )}
-                    <span style={{ fontSize: 12, color: T.faint }}>
+                    <span style={{ fontSize: 13, color: T.faint }}>
                       {rv.entered ? "평가 완료" : `가점 ${rv.bonus > 0 ? `+${rv.bonus}` : rv.bonus} · 평가 대기 /70`}
                     </span>
                     <span style={{ marginLeft: "auto", fontSize: 11, color: T.faint, flexShrink: 0, transform: openW ? "rotate(180deg)" : "none", transition: "transform .15s" }}>▾</span>
@@ -1365,28 +1348,46 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                             </div>
                             {bar("지식 TEST (담당자)", r.test != null ? r.test : null, 30, T.w2)}
                           </div>
+                          {r.comment && (
+                            <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.6, padding: "2px 4px 0" }}>
+                              💬 {r.comment}
+                              {r.by ? <span style={{ color: T.faint }}> — {r.by}</span> : null}
+                            </div>
+                          )}
                         </div>
                       );
                     })()}
                 </div>
               );
             })}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${T.line}` }}>
-              <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T.orange }}>FINAL</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${T.line}`, flexWrap: "wrap" }}>
+              <span style={{ width: 48, fontSize: 14, fontWeight: 800, flexShrink: 0, color: T.orange }}>FINAL</span>
               {cumu.ft.entered ? (
-                <span style={{ fontSize: 13, fontWeight: 800, color: T.orange, background: T.orangeSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
-                  {cumu.ft.score}/100
-                </span>
+                <>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: T.orange, background: T.orangeSoft, borderRadius: 8, padding: "3px 10px", flexShrink: 0 }}>
+                    {cumu.ft.score}/100
+                  </span>
+                  <span style={{ fontSize: 13, color: T.faint }}>
+                    작성 {(reviews.finalTest || {}).slides}장 · 오류 {(reviews.finalTest || {}).errors || 0}건
+                  </span>
+                </>
               ) : (
-                <span style={{ fontSize: 12.5, color: T.faint }}>4주차 PPT TEST (100점) — 시험 후 반영돼요</span>
+                <span style={{ fontSize: 13, color: T.faint }}>4주차 PPT TEST (100점) — 시험 후 반영돼요</span>
               )}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0" }}>
-              <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T.orange }}>누적</span>
-              <span style={{ fontSize: 13, fontWeight: 800, color: T.orange, background: T.orangeSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
-                {cumu.cum} / 500
-                {cumu.bonus !== 0 && <span style={{ fontWeight: 700 }}> · 가점 {cumu.bonus > 0 ? `+${cumu.bonus}` : cumu.bonus}</span>}
-              </span>
+            <div style={{ padding: "8px 0" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ width: 48, fontSize: 14, fontWeight: 800, flexShrink: 0, color: T.orange }}>누적</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: T.orange, background: T.orangeSoft, borderRadius: 8, padding: "3px 10px", flexShrink: 0 }}>
+                  {cumu.cum} / 500
+                  {cumu.bonus !== 0 && <span style={{ fontWeight: 700 }}> · 가점 {cumu.bonus > 0 ? `+${cumu.bonus}` : cumu.bonus}</span>}
+                </span>
+              </div>
+              {(reviews.final || {}).comment && (
+                <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.6, marginTop: 6, paddingLeft: 58 }}>
+                  💬 {(reviews.final || {}).comment}
+                </div>
+              )}
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginTop: 10, padding: "0 4px" }}>
               {WEEKS.map((w, i) => {
@@ -1415,125 +1416,9 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                 );
               })()}
             </div>
-            <button
-              onClick={() => setView("score")}
-              style={{ display: "block", margin: "12px auto 0", border: "none", background: "transparent", color: T.blue, cursor: "pointer", fontFamily: FONT, fontSize: 12.5, fontWeight: 700, textDecoration: "underline", textUnderlineOffset: 2 }}
-            >
-              항목별 상세 점수 · 담당자 코멘트 보기 →
-            </button>
-          </div>
-        )}
-
-        {/* ── 내 평가 탭: 점수 상세 (자동 점수는 실시간, 담당자 점수는 평가 후 합산) ── */}
-        {view === "score" && (
-          <div style={card(12)}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-              <span style={{ fontSize: 15, fontWeight: 700 }}>📋 내 점수</span>
-              {mentor && <span style={{ fontSize: 13, fontWeight: 700, color: T.sub }}>담당 {mentor}</span>}
+            <div style={{ fontSize: 12, color: T.faint, textAlign: "center", marginTop: 8 }}>
+              막대 전체 = 100점 만점 · 흐린 채움 = 실시간 자동 점수 · 진한 채움 = 평가 완료
             </div>
-            {WEEKS.map((w) => {
-              const r = reviews["w" + w.no] || {};
-              const rv = calcWeekReview(reviews["w" + w.no], checks, goals, submissions, targets, w.no);
-              return (
-                <div key={w.no} style={{ padding: "9px 0", borderBottom: `1px solid ${T.line}` }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                    <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T[WEEK_COLOR[w.no]] }}>{w.no}주차</span>
-                    {rv.entered ? (
-                      <span style={{ fontSize: 13, fontWeight: 800, color: T.green, background: T.greenSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
-                        {rv.total}점{rv.bonus !== 0 ? ` (${rv.bonus > 0 ? "🚀+" : "⚠️"}${rv.bonus})` : ""}
-                      </span>
-                    ) : (
-                      <>
-                        <span style={{ fontSize: 13, fontWeight: 800, color: T.blue, background: T.blueSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
-                          실시간 {rv.live}점
-                        </span>
-                        <span style={{ fontSize: 12, color: T.faint }}>
-                          자동 {Math.round((rv.pptAuto + rv.bookAuto) * 10) / 10}/30 · 가점 {rv.bonus > 0 ? `+${rv.bonus}` : rv.bonus} · 담당자 평가 대기 /70
-                        </span>
-                      </>
-                    )}
-                    {r.by && <span style={{ marginLeft: "auto", fontSize: 12, color: T.faint }}>{r.by}</span>}
-                  </div>
-                  {rv.entered && (
-                    <div style={{ fontSize: 12, color: T.faint, lineHeight: 1.7, marginTop: 4, paddingLeft: 54 }}>
-                      PPT 달성 {rv.pptAuto}/20 · 정확성 {r.acc != null ? r.acc : "─"}/20 · 서평 {r.essay != null ? r.essay : "─"}/10 · 독서 달성 {rv.bookAuto}/10 · 책 TEST {r.bookTest != null ? r.bookTest : "─"}/10 · 보고서 TEST {r.test != null ? r.test : "─"}/30 · 가점 {rv.bonus > 0 ? `+${rv.bonus}` : rv.bonus}
-                    </div>
-                  )}
-                  {r.comment && (
-                    <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.6, marginTop: 4, paddingLeft: 54 }}>{r.comment}</div>
-                  )}
-                </div>
-              );
-            })}
-            {(() => {
-              const ftr = reviews.finalTest || {};
-              const ft = cumu.ft;
-              const fc = reviews.final || {};
-              return (
-                <>
-                  {/* FINAL PPT TEST (4주차 시험, 100점) */}
-                  <div style={{ padding: "9px 0", borderBottom: `1px solid ${T.line}` }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T.orange }}>FINAL</span>
-                      {ft.entered ? (
-                        <>
-                          <span style={{ fontSize: 13, fontWeight: 800, color: T.orange, background: T.orangeSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
-                            {ft.score}/100
-                          </span>
-                          <span style={{ fontSize: 12, color: T.faint }}>
-                            작성 {ftr.slides}장 · 오류 {ftr.errors || 0}건
-                          </span>
-                        </>
-                      ) : (
-                        <span style={{ fontSize: 13, color: T.faint }}>4주차 PPT TEST (100점) — 시험 후 반영돼요</span>
-                      )}
-                    </div>
-                  </div>
-                  {/* 누적 종합 (500점제) */}
-                  <div style={{ padding: "9px 0 0" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T.orange }}>누적</span>
-                      <span style={{ fontSize: 13, fontWeight: 800, color: T.orange, background: T.orangeSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
-                        {cumu.cum} / 500
-                        {cumu.bonus !== 0 && <span style={{ fontWeight: 700 }}> · 가점 {cumu.bonus > 0 ? `+${cumu.bonus}` : cumu.bonus}</span>}
-                      </span>
-                    </div>
-                    {fc.comment && <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.6, marginTop: 4, paddingLeft: 54 }}>{fc.comment}</div>}
-                  </div>
-                  {/* 주차 점수 추이 바 — 흐린 막대는 평가 전 실시간 점수 */}
-                  <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginTop: 14, padding: "0 4px" }}>
-                    {WEEKS.map((w, i) => {
-                      const rv = cumu.weeks[i];
-                      const liveScore = rv.entered ? rv.total : Math.max(0, rv.live);
-                      return (
-                        <div key={w.no} style={{ flex: 1, textAlign: "center" }}>
-                          <div style={{ fontSize: 12, fontWeight: 800, color: T[WEEK_COLOR[w.no]], marginBottom: 3 }}>{liveScore}/100</div>
-                          <div style={{ height: 96, borderRadius: 6, background: T.cardSoft, display: "flex", alignItems: "flex-end", overflow: "hidden" }}>
-                            <div style={{ width: "100%", height: `${Math.min(100, Math.max(2, liveScore))}%`, background: T[WEEK_COLOR[w.no]], opacity: rv.entered ? 1 : 0.45, borderRadius: 4 }} />
-                          </div>
-                          <div style={{ fontSize: 10.5, color: T.faint, marginTop: 3 }}>{w.no}주</div>
-                        </div>
-                      );
-                    })}
-                    {(() => {
-                      const fs = cumu.ft.entered ? cumu.ft.score : 0;
-                      return (
-                        <div style={{ flex: 1, textAlign: "center" }}>
-                          <div style={{ fontSize: 12, fontWeight: 800, color: T.orange, marginBottom: 3 }}>{fs}/100</div>
-                          <div style={{ height: 96, borderRadius: 6, background: T.cardSoft, display: "flex", alignItems: "flex-end", overflow: "hidden" }}>
-                            <div style={{ width: "100%", height: `${Math.min(100, Math.max(2, fs))}%`, background: T.orange, opacity: cumu.ft.entered ? 1 : 0.45, borderRadius: 4 }} />
-                          </div>
-                          <div style={{ fontSize: 10.5, color: T.faint, marginTop: 3 }}>FINAL</div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                  <div style={{ fontSize: 11, color: T.faint, textAlign: "center", marginTop: 6 }}>
-                    막대 전체 = 100점 만점 · 흐린 채움 = 실시간 자동 점수 · 진한 채움 = 평가 완료
-                  </div>
-                </>
-              );
-            })()}
           </div>
         )}
 
@@ -2012,11 +1897,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
         )}
 
         {/* ══════════ 일별 카드 (주차별 목표 + 홈의 오늘) ══════════ */}
-        {(view === "home" || (view === "plan" && planMode === "week")) && (
+        {((view === "home" && homeMode === "today") || (view === "plan" && planMode === "week")) && (
           <>
-            {view === "home" && (
-              <div style={{ fontSize: 15, fontWeight: 800, margin: "16px 4px 0" }}>📌 오늘의 할 일</div>
-            )}
             <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 12 }}>
               {(view === "home" ? [homeDay] : curDays).map((d) => {
                 const f = fmtDate(d.date);
@@ -2073,12 +1955,12 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
-                          <span style={{ fontSize: 15, fontWeight: 700 }}>Day {d.dayNo}</span>
+                          <span style={{ fontSize: 17, fontWeight: 800 }}>Day {d.dayNo}</span>
                           {isToday && <Chip bg={T.blueSoft} fg={T.blue}>오늘</Chip>}
                           {d.isLast && <Chip bg={T.redSoft} fg={T.red}>TEST</Chip>}
                           {complete && <Chip bg={T.greenSoft} fg={T.green}>완료</Chip>}
                         </div>
-                        <div style={{ fontSize: 13, color: T.faint }}>
+                        <div style={{ fontSize: 13.5, color: T.faint }}>
                           할 일 {done}/{total}
                           {dayPlanStr && ` · ${dayPlanStr}`}
                           {dayLogs.length > 0 && ` · 일과 ${dayLogs.length}건`}
@@ -2266,8 +2148,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           </>
         )}
 
-        {/* ── 홈: 이번 주 제출함 ── */}
-        {view === "home" &&
+        {/* ── 홈 세그먼트: 이번 주 제출함 (+ 가점 카운트다운) ── */}
+        {view === "home" && homeMode === "submit" &&
           (() => {
             const lastDay = SCHEDULE.find((dd) => dd.week === defaultWeek && dd.isLast);
             const wkObj = wkList.find((w) => w.no === defaultWeek);
@@ -2276,17 +2158,36 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               { id: "report-ppt", label: "PPT 과제 작성본" },
               { id: "report-book", label: `책 서평 『${wkObj.book}』` },
             ];
+            const subCount = items.filter((it) => submissions[`${lastDay.key}:${it.id}`]).length;
+            const nowB = submitBonus(defaultWeek, Date.now());
             return (
               <div style={card(12)}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6, flexWrap: "wrap", gap: 4 }}>
-                  <span style={{ fontSize: 15, fontWeight: 800 }}>📎 이번 주 제출함</span>
-                  <span style={{ fontSize: 12.5, fontWeight: 700, color: T.orange }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8, flexWrap: "wrap", gap: 4 }}>
+                  <span style={{ fontSize: 16, fontWeight: 800 }}>📎 이번 주 제출함</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 700, color: T.orange }}>
                     마감 {lf.m}/{lf.day}({lf.dow}) 오전 10시
                   </span>
                 </div>
+                {subCount === 2 ? (
+                  <div style={{ padding: "9px 12px", borderRadius: 8, background: T.greenSoft, color: T.green, fontSize: 14, fontWeight: 800, marginBottom: 8 }}>
+                    이번 주 제출 완료 ✓
+                  </div>
+                ) : nowB.pts > 0 ? (
+                  <div style={{ padding: "9px 12px", borderRadius: 8, background: T.orangeSoft, color: T.orange, fontSize: 14, fontWeight: 800, marginBottom: 8 }}>
+                    지금 제출하면 🚀 가점 +{nowB.pts}점
+                  </div>
+                ) : nowB.pts === 0 ? (
+                  <div style={{ padding: "9px 12px", borderRadius: 8, background: T.orangeSoft, color: T.orange, fontSize: 14, fontWeight: 800, marginBottom: 8 }}>
+                    마감 오늘 오전 10시 — 정시 제출하세요
+                  </div>
+                ) : (
+                  <div style={{ padding: "9px 12px", borderRadius: 8, background: T.redSoft, color: T.red, fontSize: 14, fontWeight: 800, marginBottom: 8 }}>
+                    ⚠️ 마감 지남 — 미제출·지각 가점 -5점
+                  </div>
+                )}
                 {items.map((it, i) => (
-                  <div key={it.id} style={{ padding: "8px 0", borderBottom: i === items.length - 1 ? "none" : `1px solid ${T.line}` }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 6 }}>{it.label}</div>
+                  <div key={it.id} style={{ padding: "10px 0", borderBottom: i === items.length - 1 ? "none" : `1px solid ${T.line}` }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>{it.label}</div>
                     {renderAttach(lastDay.key, defaultWeek, { id: it.id, cat: "제출" })}
                   </div>
                 ))}
@@ -2294,31 +2195,40 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
             );
           })()}
 
-        {/* ── 홈: 담당자 최근 코멘트 ── */}
-        {view === "home" &&
+        {/* ── 홈 세그먼트: 담당자 코멘트 (최신순 전체) ── */}
+        {view === "home" && homeMode === "comment" &&
           (() => {
             const entries = ["w1", "w2", "w3", "w4", "final"]
               .map((k) => ({ k, r: reviews[k] }))
               .filter((x) => x.r && x.r.comment);
-            if (!entries.length) return null;
             entries.sort((a, b) => (b.r.at || 0) - (a.r.at || 0));
-            const top = entries[0];
-            const label = top.k === "final" ? "종합" : top.k.replace("w", "") + "주차";
             return (
               <div style={card(12)}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-                  <span style={{ fontSize: 15, fontWeight: 800 }}>💬 담당자 코멘트</span>
+                  <span style={{ fontSize: 16, fontWeight: 800 }}>💬 담당자 코멘트</span>
                   <button
                     onClick={() => setView("score")}
-                    style={{ border: "none", background: "transparent", color: T.blue, cursor: "pointer", fontFamily: FONT, fontSize: 12.5, fontWeight: 700, textDecoration: "underline", textUnderlineOffset: 2 }}
+                    style={{ border: "none", background: "transparent", color: T.blue, cursor: "pointer", fontFamily: FONT, fontSize: 13, fontWeight: 700, textDecoration: "underline", textUnderlineOffset: 2 }}
                   >
                     내 평가 전체 보기
                   </button>
                 </div>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: T.sub, marginBottom: 4 }}>
-                  {label} · {top.r.by}
-                </div>
-                <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.6 }}>{top.r.comment}</div>
+                {entries.length === 0 && (
+                  <div style={{ fontSize: 14, color: T.faint, padding: "14px 0", textAlign: "center" }}>
+                    아직 코멘트가 없어요 — 주차 평가 후 담당자 코멘트가 여기에 표시돼요
+                  </div>
+                )}
+                {entries.map((e, i) => {
+                  const label = e.k === "final" ? "종합" : e.k.replace("w", "") + "주차";
+                  return (
+                    <div key={e.k} style={{ padding: "10px 0", borderBottom: i === entries.length - 1 ? "none" : `1px solid ${T.line}` }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: T.sub, marginBottom: 4 }}>
+                        {label} · {e.r.by}
+                      </div>
+                      <div style={{ fontSize: 14, color: T.sub, lineHeight: 1.65 }}>{e.r.comment}</div>
+                    </div>
+                  );
+                })}
               </div>
             );
           })()}
