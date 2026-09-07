@@ -802,6 +802,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   const T = THEMES[theme];
   const [view, setView] = useState("home"); // home | guide | plan | score (+ 관리자: all | review | settings)
   const [planMode, setPlanMode] = useState("week"); // 목표관리 탭 내부: week(기본) | calendar
+  const [guideMode, setGuideMode] = useState("purpose"); // 교육안내 탭 내부: purpose | scoring | rules | curriculum
   const [week, setWeek] = useState(defaultWeek);
   const [checks, setChecks] = useState({});
   const [logs, setLogs] = useState({});
@@ -1536,180 +1537,139 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           </div>
         )}
 
-        {/* ══════════ 교육안내 탭: 목적 → 룰 → 평가방법 → 커리큘럼 ══════════ */}
+        {/* ══════════ 교육안내 탭: 세그먼트 탭(목적|평가|제출 룰|커리큘럼) — 한 화면 = 한 주제 ══════════ */}
         {view === "guide" && (
           <>
-        {/* 교육 목적 — 역량 중심, 담백하게 */}
-        <div style={card(12)}>
-          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 8 }}>🎯 교육 목적</div>
-          <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.7, marginBottom: 10 }}>이 교육이 기르는 것은 네 가지입니다.</div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-            {["인내", "성실", "목표관리", "기본기"].map((k) => (
-              <span key={k} style={{ fontSize: 13, fontWeight: 800, color: T.blue, background: T.blueSoft, borderRadius: 999, padding: "5px 14px" }}>
-                {k}
-              </span>
-            ))}
-          </div>
-          <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.7 }}>
-            4주 동안 매일 계획을 세우고, 실행하고, 기록합니다. 결과물과 점수는 그 과정을 비추는 거울입니다.
-          </div>
+        {/* 상단 세그먼트 탭 */}
+        <div style={{ display: "flex", gap: 2, margin: "4px 0 16px", background: theme === "dark" ? T.card : T.cardSoft, borderRadius: 999, padding: 3 }}>
+          {[
+            { id: "purpose", label: "🎯 목적" },
+            { id: "scoring", label: "📐 평가" },
+            { id: "rules", label: "⏰ 제출 룰" },
+            { id: "curriculum", label: "📚 커리큘럼" },
+          ].map((v) => {
+            const active = guideMode === v.id;
+            return (
+              <button
+                key={v.id}
+                onClick={() => setGuideMode(v.id)}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  padding: "10px 0",
+                  borderRadius: 999,
+                  border: "none",
+                  cursor: "pointer",
+                  fontFamily: FONT,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  whiteSpace: "nowrap",
+                  background: active ? (theme === "dark" ? T.cardSoft : T.card) : "transparent",
+                  color: active ? T.text : T.sub,
+                  boxShadow: active && theme !== "dark" ? "0 1px 3px rgba(23,25,28,0.12)" : "none",
+                  transition: "background .15s, color .15s",
+                }}
+              >
+                {v.label}
+              </button>
+            );
+          })}
         </div>
 
-        {/* 평가 구조 시각화 — 전체 그림 먼저 */}
+        {/* 🎯 목적 — 역량 4개를 큰 카드로 */}
+        {guideMode === "purpose" && (
         <div style={card(12)}>
-          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>📐 평가 구조</div>
-          <div style={{ fontSize: 12.5, color: T.faint, marginBottom: 12 }}>
-            주차 100점 × 4 + 4주차 FINAL PPT TEST 100점 = 총 500점 · 제출 가점은 만점 외 추가 점수(파일별 ±5, 주당 최대 ±10)
+          <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10 }}>🎯 교육 목적</div>
+          <div style={{ fontSize: 15, color: T.sub, lineHeight: 1.7, marginBottom: 16 }}>
+            4주 동안 매일 계획을 세우고, 실행하고, 기록합니다. 이 교육이 기르는 것은 네 가지입니다.
           </div>
-
-          <div style={{ fontSize: 12, fontWeight: 700, color: T.sub, marginBottom: 5 }}>총 500점</div>
-          <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
-            {[1, 2, 3, 4].map((n) => (
-              <div key={n} style={{ flex: 1, height: 14, borderRadius: 4, background: T[WEEK_COLOR[n]], opacity: 0.85 }} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {[
+              { k: "인내", d: "쉽게 끝나지 않는 과제를 끝까지" },
+              { k: "성실", d: "매일의 계획과 실행을 빠짐없이" },
+              { k: "목표관리", d: "스스로 목표를 세우고 달성하기" },
+              { k: "기본기", d: "장표·보고서·독서의 기본" },
+            ].map((c) => (
+              <div key={c.k} style={{ background: T.blueSoft, borderRadius: 8, padding: "18px 14px" }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: T.blue, marginBottom: 6 }}>{c.k}</div>
+                <div style={{ fontSize: 13, color: T.sub, lineHeight: 1.5 }}>{c.d}</div>
+              </div>
             ))}
-            <div style={{ flex: 1, height: 14, borderRadius: 4, background: T.orange, opacity: 0.85 }} />
           </div>
-          <div style={{ display: "flex", gap: 3, marginBottom: 14 }}>
-            {["1주 100", "2주 100", "3주 100", "4주 100", "FINAL 100"].map((s, i) => (
-              <div key={s} style={{ flex: 1, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: i === 4 ? T.orange : T[WEEK_COLOR[i + 1]] }}>
+        </div>
+        )}
+
+        {/* 📐 평가 — 500 큰 숫자 + 주차 구성 큰 카드 3장 + FINAL */}
+        {guideMode === "scoring" && (
+        <div style={card(12)}>
+          <div style={{ fontSize: 18, fontWeight: 800 }}>📐 평가 구조</div>
+
+          <div style={{ textAlign: "center", margin: "18px 0 4px" }}>
+            <span style={{ fontSize: 46, fontWeight: 800, color: T.blue, letterSpacing: -1 }}>500</span>
+            <span style={{ fontSize: 18, fontWeight: 700, color: T.sub }}> 점</span>
+          </div>
+          <div style={{ textAlign: "center", fontSize: 14.5, fontWeight: 600, color: T.sub, marginBottom: 14 }}>
+            주차 100점 × 4주 + FINAL PPT TEST 100점
+          </div>
+          <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+            {[1, 2, 3, 4].map((n) => (
+              <div key={n} style={{ flex: 1, height: 26, borderRadius: 6, background: T[WEEK_COLOR[n]], opacity: 0.85 }} />
+            ))}
+            <div style={{ flex: 1, height: 26, borderRadius: 6, background: T.orange, opacity: 0.85 }} />
+          </div>
+          <div style={{ display: "flex", gap: 4, marginBottom: 24 }}>
+            {["1주", "2주", "3주", "4주", "FINAL"].map((s, i) => (
+              <div key={s} style={{ flex: 1, textAlign: "center", fontSize: 12.5, fontWeight: 700, lineHeight: 1.4, color: i === 4 ? T.orange : T[WEEK_COLOR[i + 1]] }}>
                 {s}
+                <br />
+                100
               </div>
             ))}
           </div>
 
-          <div style={{ fontSize: 12, fontWeight: 700, color: T.sub, marginBottom: 5 }}>주차 100점의 구성</div>
-          <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
-            <div style={{ flex: 40, height: 14, borderRadius: 4, background: T.blue, opacity: 0.85 }} />
-            <div style={{ flex: 30, height: 14, borderRadius: 4, background: T.purple, opacity: 0.85 }} />
-            <div style={{ flex: 30, height: 14, borderRadius: 4, background: T.w2, opacity: 0.85 }} />
-          </div>
-          <div style={{ display: "flex", gap: 3, marginBottom: 12 }}>
-            <div style={{ flex: 40, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.blue }}>PPT 40</div>
-            <div style={{ flex: 30, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.purple }}>서평 30</div>
-            <div style={{ flex: 30, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.w2 }}>보고서 30</div>
-          </div>
-
-          <div style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.6, marginBottom: 12 }}>
-            4주차 · FINAL PPT TEST · 100점 — 1시간 내 작성 장수에 비례(기준 도달 시 100점) − 오류 1건당 감점
-          </div>
-
-          <div style={{ padding: "9px 12px", borderRadius: 8, background: T.orangeSoft, color: T.orange, fontSize: 12.5, fontWeight: 700, lineHeight: 1.7 }}>
-            🚀 제출 가점 <span style={{ fontWeight: 600 }}>(마감: 주차 마지막 날 오전 10시 · 조기 판정은 자정 기준)</span>
-            <br />
-            마감 2일 전 밤 12시까지 +5 · 전날 밤 12시까지 +3 · 당일 오전 10시까지 0 · 이후 제출/미제출 -5
-            <br />
-            <span style={{ fontWeight: 600 }}>PPT 작성본·책 서평이 각각 가점을 받아 합산돼요 (주당 -10 ~ +10)</span>
-          </div>
-        </div>
-
-        {/* 3개 과정 — 과정 목표와 배점을 막대로 시각화 */}
-        <div style={card(12)}>
-          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>📦 3개 과정</div>
-
-          {/* 500점을 과정별로 나누면 */}
-          <div style={{ fontSize: 12, fontWeight: 700, color: T.sub, marginBottom: 5 }}>총 500점을 과정별로 나누면</div>
-          <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
-            <div style={{ flex: 260, height: 16, borderRadius: 4, background: T.blue }} />
-            <div style={{ flex: 120, height: 16, borderRadius: 4, background: T.purple }} />
-            <div style={{ flex: 120, height: 16, borderRadius: 4, background: T.w2 }} />
-          </div>
-          <div style={{ display: "flex", gap: 3, marginBottom: 16 }}>
-            <div style={{ flex: 260, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.blue, whiteSpace: "nowrap" }}>PPT 260 (52%)</div>
-            <div style={{ flex: 120, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.purple, whiteSpace: "nowrap" }}>서평 120 (24%)</div>
-            <div style={{ flex: 120, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.w2, whiteSpace: "nowrap" }}>보고서 120 (24%)</div>
-          </div>
-
+          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>주차 100점은 이렇게 나뉩니다</div>
           {[
-            {
-              icon: "📊",
-              name: "PPT",
-              color: "blue",
-              total: "총 260점 · 전체의 52%",
-              goal: "표준 장표를 짧은 시간 안에 정확하게 완성하는 실전 제작력을 기릅니다.",
-              weekly: [
-                { label: "달성률", pts: 20, auto: true },
-                { label: "정확성", pts: 20 },
-              ],
-              extra: "FINAL PPT TEST · 100점",
-            },
-            {
-              icon: "📚",
-              name: "책 서평",
-              color: "purple",
-              total: "총 120점 · 24%",
-              goal: "병원 경영을 보는 자기만의 관점과 논리를 만듭니다.",
-              weekly: [
-                { label: "서평", pts: 10 },
-                { label: "달성률", pts: 10, auto: true },
-                { label: "책 TEST", pts: 10 },
-              ],
-            },
-            {
-              icon: "📋",
-              name: "프로젝트 보고서",
-              color: "w2",
-              total: "총 120점 · 24%",
-              goal: "실제 프로젝트의 핵심 지식을 익힙니다.",
-              weekly: [{ label: "지식 TEST", pts: 30 }],
-            },
-          ].map((c, i) => (
-            <div key={c.name} style={{ padding: "12px 0", borderBottom: i === 2 ? "none" : `1px solid ${T.line}` }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
-                <span style={{ fontSize: 14, fontWeight: 800, color: T[c.color] }}>
+            { icon: "📊", name: "PPT", pts: 40, color: "blue", goal: "표준 장표를 짧은 시간 안에 정확하게 완성하는 실전 제작력을 기릅니다.", detail: "달성률 20 (자동 집계) + 정확성 20 (담당자 평가)" },
+            { icon: "📚", name: "책 서평", pts: 30, color: "purple", goal: "병원 경영을 보는 자기만의 관점과 논리를 만듭니다.", detail: "서평 10 + 달성률 10 (자동 집계) + 책 TEST 10" },
+            { icon: "📋", name: "프로젝트 보고서", pts: 30, color: "w2", goal: "실제 프로젝트의 핵심 지식을 익힙니다.", detail: "지식 TEST 30" },
+          ].map((c) => (
+            <div key={c.name} style={{ background: T[c.color + "Soft"], borderRadius: 8, padding: "14px 16px", marginBottom: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <span style={{ fontSize: 16, fontWeight: 800, color: T[c.color] }}>
                   {c.icon} {c.name}
                 </span>
-                <span style={{ fontSize: 12, fontWeight: 800, color: T[c.color], background: T[c.color + "Soft"], borderRadius: 8, padding: "2px 8px" }}>
-                  {c.total}
+                <span style={{ fontSize: 24, fontWeight: 800, color: T[c.color], flexShrink: 0 }}>
+                  {c.pts}
+                  <span style={{ fontSize: 14 }}>점</span>
                 </span>
               </div>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: T.text, lineHeight: 1.6, marginBottom: 8 }}>{c.goal}</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: T.faint, width: 52, flexShrink: 0 }}>
-                  주당 {c.weekly.reduce((s, x) => s + x.pts, 0)}점
-                </span>
-                <div style={{ flex: 1, display: "flex", gap: 3 }}>
-                  {c.weekly.map((s) => (
-                    <div
-                      key={s.label}
-                      style={{
-                        flex: s.pts,
-                        height: 20,
-                        borderRadius: 4,
-                        background: s.auto ? T[c.color + "Soft"] : T[c.color],
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        overflow: "hidden",
-                      }}
-                    >
-                      <span style={{ fontSize: 10, fontWeight: 800, whiteSpace: "nowrap", color: s.auto ? T[c.color] : "#fff" }}>
-                        {s.label} {s.pts}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              {c.extra && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: T.faint, width: 52, flexShrink: 0 }}>4주차</span>
-                  <div style={{ flex: 1, height: 20, borderRadius: 4, background: T.orange, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <span style={{ fontSize: 10, fontWeight: 800, color: "#fff", whiteSpace: "nowrap" }}>{c.extra}</span>
-                  </div>
-                </div>
-              )}
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: T.text, lineHeight: 1.55, marginBottom: 4 }}>{c.goal}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: T.sub, lineHeight: 1.55 }}>{c.detail}</div>
             </div>
           ))}
-          <div style={{ fontSize: 11, color: T.faint, textAlign: "center", marginTop: 8 }}>
-            연한 조각 = 자동 집계(매일 실시간 반영) · 진한 조각 = 담당자 평가
+
+          <div style={{ background: T.orangeSoft, borderRadius: 8, padding: "14px 16px", marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+              <span style={{ fontSize: 16, fontWeight: 800, color: T.orange }}>🏁 FINAL PPT TEST</span>
+              <span style={{ fontSize: 24, fontWeight: 800, color: T.orange, flexShrink: 0 }}>
+                100
+                <span style={{ fontSize: 14 }}>점</span>
+              </span>
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: T.sub, lineHeight: 1.55 }}>4주차 · 1시간 내 작성 장수에 비례 − 오류 1건당 감점</div>
+          </div>
+
+          <div onClick={() => setGuideMode("rules")} style={{ fontSize: 13.5, fontWeight: 700, color: T.orange, textAlign: "center", cursor: "pointer", padding: "4px 0" }}>
+            🚀 제출 가점(주당 ±10)은 만점 외 별도 — ⏰ 제출 룰에서 확인 →
           </div>
         </div>
+        )}
 
-
-        {/* ── GROUND RULES ── */}
+        {/* ⏰ 제출 룰 — 마감 시각이 주인공 + 가점 사다리 */}
+        {guideMode === "rules" && (
+          <>
         <div style={card(12)}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-            <span style={{ fontSize: 15, fontWeight: 800 }}>교육 진행 GROUND RULES</span>
-          </div>
+          <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>⏰ 제출 룰</div>
           {GROUND_RULES.map((r, i) => (
             <div
               key={i}
@@ -1717,21 +1677,19 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                 display: "flex",
                 alignItems: "center",
                 gap: 12,
-                padding: "10px 0",
+                padding: "14px 0",
                 borderBottom: i === GROUND_RULES.length - 1 ? "none" : `1px solid ${T.line}`,
               }}
             >
-              <span style={{ fontSize: 18, flexShrink: 0 }}>{r.icon}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.45 }}>{r.text}</div>
-              </div>
+              <span style={{ fontSize: 22, flexShrink: 0 }}>{r.icon}</span>
+              <div style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 700, lineHeight: 1.5 }}>{r.text}</div>
               <span
                 style={{
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: 800,
                   color: T[r.color],
                   background: T[r.color + "Soft"],
-                  padding: "5px 10px",
+                  padding: "6px 10px",
                   borderRadius: 8,
                   flexShrink: 0,
                   whiteSpace: "nowrap",
@@ -1743,23 +1701,50 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           ))}
         </div>
 
-        {/* 커리큘럼 */}
         <div style={card(12)}>
-          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>📚 커리큘럼</div>
+          <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>🚀 제출 가점 — 일찍 낼수록 유리</div>
+          <div style={{ fontSize: 13, color: T.faint, marginBottom: 6 }}>마감: 주차 마지막 날 오전 10시 · 조기 판정은 밤 12시(자정) 기준</div>
+          {[
+            { when: "마감 2일 전 밤 12시까지", pts: "+5", color: "green" },
+            { when: "마감 전날 밤 12시까지", pts: "+3", color: "green" },
+            { when: "마감 당일 오전 10시까지", pts: "0", color: "sub" },
+            { when: "이후 제출 · 미제출", pts: "-5", color: "red" },
+          ].map((s, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 0", borderBottom: i === 3 ? "none" : `1px solid ${T.line}` }}>
+              <span style={{ fontSize: 15, fontWeight: 700 }}>{s.when}</span>
+              <span style={{ fontSize: 22, fontWeight: 800, color: T[s.color] }}>{s.pts}</span>
+            </div>
+          ))}
+          <div style={{ marginTop: 8, padding: "10px 12px", borderRadius: 8, background: T.orangeSoft, color: T.orange, fontSize: 13, fontWeight: 700, lineHeight: 1.6 }}>
+            PPT 작성본·책 서평이 각각 가점을 받아 합산 — 주당 -10 ~ +10 · 만점 500점 외 추가 점수
+          </div>
+        </div>
+          </>
+        )}
+
+        {/* 📚 커리큘럼 */}
+        {guideMode === "curriculum" && (
+        <div style={card(12)}>
+          <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>📚 커리큘럼</div>
           {wkList.map((w, i) => (
-            <div key={w.no} style={{ padding: "10px 0", borderBottom: i === wkList.length - 1 ? "none" : `1px solid ${T.line}` }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: T[WEEK_COLOR[w.no]] }}>
-                {w.no}주차 <span style={{ color: T.sub, fontWeight: 600 }}>· {w.range}</span>
+            <div key={w.no} style={{ padding: "13px 0", borderBottom: i === wkList.length - 1 ? "none" : `1px solid ${T.line}` }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: T[WEEK_COLOR[w.no]] }}>
+                {w.no}주차 <span style={{ fontSize: 13.5, color: T.sub, fontWeight: 600 }}>· {w.range}</span>
               </div>
-              <div style={{ fontSize: 13, color: T.sub, marginTop: 4, lineHeight: 1.6 }}>
-                PPT {w.ppt} · 프로젝트 {w.project} · 도서 『{w.book}』
+              <div style={{ fontSize: 14, color: T.sub, marginTop: 5, lineHeight: 1.7 }}>
+                📊 {w.ppt}
+                <br />
+                📋 {w.project}
+                <br />
+                📚 『{w.book}』
               </div>
             </div>
           ))}
-          <div style={{ marginTop: 10, padding: "9px 12px", borderRadius: 8, background: T.redSoft, color: T.red, fontSize: 12.5, fontWeight: 600, lineHeight: 1.5 }}>
+          <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 8, background: T.redSoft, color: T.red, fontSize: 13, fontWeight: 600, lineHeight: 1.5 }}>
             추석 연휴 9/24(목)~9/26(토) 휴무 — 4주차는 10/1(목)까지 진행
           </div>
         </div>
+        )}
           </>
         )}
 
