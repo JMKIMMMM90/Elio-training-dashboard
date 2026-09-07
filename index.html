@@ -1448,6 +1448,53 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           </div>
         </div>
 
+        {/* 평가 구조 시각화 — 전체 그림 먼저 */}
+        <div style={card(12)}>
+          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>📐 평가 구조</div>
+          <div style={{ fontSize: 12.5, color: T.faint, marginBottom: 12 }}>
+            주차 100점 × 4 + 4주차 FINAL PPT TEST 100점 = 총 500점 · 제출 가점은 만점 외 보너스
+          </div>
+
+          <div style={{ fontSize: 12, fontWeight: 700, color: T.sub, marginBottom: 5 }}>총 500점</div>
+          <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
+            {[1, 2, 3, 4].map((n) => (
+              <div key={n} style={{ flex: 1, height: 14, borderRadius: 4, background: T[WEEK_COLOR[n]], opacity: 0.85 }} />
+            ))}
+            <div style={{ flex: 1, height: 14, borderRadius: 4, background: T.orange, opacity: 0.85 }} />
+          </div>
+          <div style={{ display: "flex", gap: 3, marginBottom: 14 }}>
+            {["1주 100", "2주 100", "3주 100", "4주 100", "FINAL 100"].map((s, i) => (
+              <div key={s} style={{ flex: 1, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: i === 4 ? T.orange : T[WEEK_COLOR[i + 1]] }}>
+                {s}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ fontSize: 12, fontWeight: 700, color: T.sub, marginBottom: 5 }}>주차 100점의 구성</div>
+          <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
+            <div style={{ flex: 40, height: 14, borderRadius: 4, background: T.blue, opacity: 0.85 }} />
+            <div style={{ flex: 30, height: 14, borderRadius: 4, background: T.purple, opacity: 0.85 }} />
+            <div style={{ flex: 30, height: 14, borderRadius: 4, background: T.w2, opacity: 0.85 }} />
+          </div>
+          <div style={{ display: "flex", gap: 3, marginBottom: 12 }}>
+            <div style={{ flex: 40, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.blue }}>PPT 40</div>
+            <div style={{ flex: 30, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.purple }}>서평 30</div>
+            <div style={{ flex: 30, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.w2 }}>보고서 30</div>
+          </div>
+
+          <div style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.6, marginBottom: 12 }}>
+            4주차 · FINAL PPT TEST · 100점 — 1시간 내 작성 장수에 비례(기준 도달 시 100점) − 오류 1건당 감점
+          </div>
+
+          <div style={{ padding: "9px 12px", borderRadius: 8, background: T.orangeSoft, color: T.orange, fontSize: 12.5, fontWeight: 700, lineHeight: 1.7 }}>
+            🚀 제출 가점 <span style={{ fontWeight: 600 }}>(마감: 주차 마지막 날 오전 10시 · 조기 판정은 자정 기준)</span>
+            <br />
+            마감 2일 전 밤 12시까지 +5 · 전날 밤 12시까지 +3 · 당일 오전 10시까지 0 · 이후 제출/미제출 -5
+            <br />
+            <span style={{ fontWeight: 600 }}>PPT 작성본·책 서평 두 파일의 평균으로 계산돼요</span>
+          </div>
+        </div>
+
         {/* 3개 과정 — 과정 목표와 배점을 막대로 시각화 */}
         <div style={card(12)}>
           <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>📦 3개 과정</div>
@@ -1476,7 +1523,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                 { label: "달성률", pts: 20, auto: true },
                 { label: "정확성", pts: 20 },
               ],
-              extra: "FINAL PPT TEST 100",
+              extra: "FINAL PPT TEST · 100점",
             },
             {
               icon: "📚",
@@ -1550,52 +1597,6 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           </div>
         </div>
 
-        {/* 평가 구조 시각화 */}
-        <div style={card(12)}>
-          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>📐 평가 구조</div>
-          <div style={{ fontSize: 12.5, color: T.faint, marginBottom: 12 }}>
-            주차 100점 × 4 + FINAL PPT TEST 100점 = 총 500점 · 제출 가점은 만점 외 보너스
-          </div>
-
-          <div style={{ fontSize: 12, fontWeight: 700, color: T.sub, marginBottom: 5 }}>총 500점</div>
-          <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
-            {[1, 2, 3, 4].map((n) => (
-              <div key={n} style={{ flex: 1, height: 14, borderRadius: 4, background: T[WEEK_COLOR[n]], opacity: 0.85 }} />
-            ))}
-            <div style={{ flex: 1, height: 14, borderRadius: 4, background: T.orange, opacity: 0.85 }} />
-          </div>
-          <div style={{ display: "flex", gap: 3, marginBottom: 14 }}>
-            {["1주 100", "2주 100", "3주 100", "4주 100", "FINAL 100"].map((s, i) => (
-              <div key={s} style={{ flex: 1, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: i === 4 ? T.orange : T[WEEK_COLOR[i + 1]] }}>
-                {s}
-              </div>
-            ))}
-          </div>
-
-          <div style={{ fontSize: 12, fontWeight: 700, color: T.sub, marginBottom: 5 }}>주차 100점의 구성</div>
-          <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
-            <div style={{ flex: 40, height: 14, borderRadius: 4, background: T.blue, opacity: 0.85 }} />
-            <div style={{ flex: 30, height: 14, borderRadius: 4, background: T.purple, opacity: 0.85 }} />
-            <div style={{ flex: 30, height: 14, borderRadius: 4, background: T.w2, opacity: 0.85 }} />
-          </div>
-          <div style={{ display: "flex", gap: 3, marginBottom: 12 }}>
-            <div style={{ flex: 40, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.blue }}>PPT 40</div>
-            <div style={{ flex: 30, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.purple }}>서평 30</div>
-            <div style={{ flex: 30, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.w2 }}>보고서 30</div>
-          </div>
-
-          <div style={{ fontSize: 12.5, color: T.sub, lineHeight: 1.6, marginBottom: 12 }}>
-            FINAL PPT TEST: 1시간 내 작성 장수에 비례(기준 도달 시 100점) − 오류 1건당 감점
-          </div>
-
-          <div style={{ padding: "9px 12px", borderRadius: 8, background: T.orangeSoft, color: T.orange, fontSize: 12.5, fontWeight: 700, lineHeight: 1.7 }}>
-            🚀 제출 가점 <span style={{ fontWeight: 600 }}>(마감: 주차 마지막 날 오전 10시 · 조기 판정은 자정 기준)</span>
-            <br />
-            마감 2일 전 밤 12시까지 +5 · 전날 밤 12시까지 +3 · 당일 오전 10시까지 0 · 이후 제출/미제출 -5
-            <br />
-            <span style={{ fontWeight: 600 }}>PPT 작성본·책 서평 두 파일의 평균으로 계산돼요</span>
-          </div>
-        </div>
 
         {/* ── GROUND RULES ── */}
         <div style={card(12)}>
