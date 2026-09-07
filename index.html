@@ -150,7 +150,7 @@ const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 const GROUND_RULES = [
   { icon: "📝", text: "주별 과제 수행 계획 공유", when: "주차 첫날(수) 오전 11시까지", color: "blue" },
   { icon: "💬", text: "궁금한 점·어려운 점은 빠르게 커뮤니케이션", when: "상시", color: "green" },
-  { icon: "📤", text: "제출물 제출 — PPT 과제 작성본 · 독후감", when: "주차 마지막 날 오전 10시까지", color: "orange" },
+  { icon: "📤", text: "제출물 제출 — PPT 과제 작성본 · 책 서평", when: "주차 마지막 날 오전 10시까지", color: "orange" },
   { icon: "🧪", text: "TEST 수행 — 프로젝트 · 도서 (4주차는 PPT 포함)", when: "주차 마지막 날 오후 4시", color: "red" },
 ];
 
@@ -176,7 +176,7 @@ function taskLabel(task, w) {
     case "proj": return `보고서 숙지 · ${w.project}`;
     case "book": return `독서 · 『${w.book}』`;
     case "report-ppt": return "PPT 과제 작성본 제출";
-    case "report-book": return `독후감 제출 『${w.book}』`;
+    case "report-book": return `책 서평 제출 『${w.book}』`;
     case "test-proj": return `프로젝트 서술형 TEST (${w.project})`;
     case "test-book": return `도서 퀴즈·서술형 TEST (${w.book})`;
     case "test-ppt": return "PPT 테스트 (AI 활용)";
@@ -349,7 +349,7 @@ function addDaysStr(dateStr, n) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-// 제출 시점 가점(사다리): 마감(마지막 날 10:00) 기준 2일 전 +5 / 전날 +3 / 정시 +1 / 지각 0
+// 제출 시점 가점(사다리): 마감(마지막 날 10:00) 기준 2일 전 +5 / 전날 +3 / 정시 0 / 지각 -5
 function submitBonus(weekNo, at) {
   const w = WEEKS.find((x) => x.no === weekNo);
   const last = w.dates[w.dates.length - 1];
@@ -358,8 +358,8 @@ function submitBonus(weekNo, at) {
   const deadline = new Date(last + "T10:00:00").getTime();
   if (at < dayBefore) return { pts: 5, label: "🚀 조기 +5" };
   if (at < lastMid) return { pts: 3, label: "🚀 조기 +3" };
-  if (at <= deadline) return { pts: 1, label: "✓ 정시 +1" };
-  return { pts: 0, label: "⚠️ 지각" };
+  if (at <= deadline) return { pts: 0, label: "✓ 정시" };
+  return { pts: -5, label: "⚠️ 지각 -5" };
 }
 
 // 주차 자동 달성률(0~1): 총량이 설정된 영역은 누적/총량, 아니면 일별 목표 달성 평균
@@ -370,34 +370,39 @@ function weekAreaRate(checks, goals, targets, weekNo, areaId) {
   return days.reduce((s, d) => s + areaScore(checks, goals, d.key, areaId), 0) / days.length;
 }
 
-// 주차 제출 가점: PPT 작성본·독후감 두 파일의 가점 평균 (미제출은 0)
+// 주차 제출 가점: PPT 작성본·서평 두 파일의 가점 평균.
+// 마감이 지나도록 미제출이면 지각(-5)과 동일 취급 (지각 제출이 미제출보다 불리해지는 역전 방지)
 function weekBonus(submissions, weekNo) {
   const lastDay = SCHEDULE.find((d) => d.week === weekNo && d.isLast);
+  const deadline = new Date(lastDay.date + "T10:00:00").getTime();
   const pts = ["report-ppt", "report-book"].map((id) => {
     const m = (submissions || {})[`${lastDay.key}:${id}`];
-    return m && m.at ? submitBonus(weekNo, m.at).pts : 0;
+    if (m && m.at) return submitBonus(weekNo, m.at).pts;
+    return Date.now() > deadline ? -5 : 0;
   });
   return Math.round(((pts[0] + pts[1]) / 2) * 10) / 10;
 }
 
-// 담당자 입력 항목 (배점) — PPT 40 = 달성률 20(자동)+정확성 20 / 독후감 30 = 독창성 10+달성률 10(자동)+논리 10 / 보고서 30 = TEST 30
+// 담당자 입력 항목 (배점) — PPT 40 = 달성률 20(자동)+정확성 20 /
+// 책 서평 30 = 서평(독창성·주관·논리) 10+달성률 10(자동)+책 TEST 10 / 보고서 30 = TEST 30
 const REVIEW_ITEMS = [
   { id: "acc", label: "PPT 정확성", max: 20 },
-  { id: "orig", label: "독후감 독창성", max: 10 },
-  { id: "logic", label: "독후감 논리", max: 10 },
+  { id: "essay", label: "서평 평가", max: 10 },
+  { id: "bookTest", label: "책 TEST", max: 10 },
   { id: "test", label: "보고서 TEST", max: 30 },
 ];
 
-// 주차 점수 계산: 자동(PPT달성 20 + 독서달성 10 + 제출가점 5) + 담당자(정확성·독창성·논리·TEST)
+// 주차 점수 계산: 자동(PPT달성 20 + 독서달성 10 + 제출가점 ±5) + 담당자(정확성·서평·책TEST·보고서TEST)
 function calcWeekReview(r, checks, goals, submissions, targets, weekNo) {
   const pptAuto = Math.round(weekAreaRate(checks, goals, targets, weekNo, "ppt") * 20 * 10) / 10;
   const bookAuto = Math.round(weekAreaRate(checks, goals, targets, weekNo, "book") * 10 * 10) / 10;
   const bonus = weekBonus(submissions, weekNo);
   const m = r || {};
-  const manual = (m.acc || 0) + (m.orig || 0) + (m.logic || 0) + (m.test || 0);
+  const manual = (m.acc || 0) + (m.essay || 0) + (m.bookTest || 0) + (m.test || 0);
   const total = Math.round((pptAuto + bookAuto + manual + bonus) * 10) / 10;
-  const entered = !!r && (m.acc != null || m.orig != null || m.logic != null || m.test != null || !!m.comment);
-  return { pptAuto, bookAuto, bonus, total, entered };
+  const entered = !!r && (m.acc != null || m.essay != null || m.bookTest != null || m.test != null || !!m.comment);
+  const live = Math.round((pptAuto + bookAuto + bonus) * 10) / 10; // 평가 전에도 보이는 실시간 점수
+  return { pptAuto, bookAuto, bonus, total, live, entered };
 }
 
 // 오늘이 속한(또는 다음) 주차
@@ -1077,6 +1082,43 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           </div>
         </div>
 
+        {/* ── 오늘의 미션 스트립 (신입용: 오늘 상태 + 제출 카운트다운) ── */}
+        {!isStaff &&
+          (() => {
+            const lastDay = SCHEDULE.find((d) => d.week === defaultWeek && d.isLast);
+            const todayD = todayIdx >= 0 ? SCHEDULE[todayIdx] : null;
+            const todayPct = todayD
+              ? Math.round((todayD.tasks.reduce((s, t) => s + taskScore(checks, goals, todayD, t), 0) / todayD.tasks.length) * 100)
+              : null;
+            const wkPct = stats.per[defaultWeek] ? stats.per[defaultWeek].pct : 0;
+            const subCount = ["report-ppt", "report-book"].filter((id) => submissions[`${lastDay.key}:${id}`]).length;
+            const nowB = submitBonus(defaultWeek, Date.now());
+            const seg = { fontSize: 13, fontWeight: 700, color: T.sub, whiteSpace: "nowrap" };
+            return (
+              <div style={{ ...card(0), display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px 14px", padding: "11px 14px", marginBottom: 12 }}>
+                {todayPct !== null && (
+                  <span style={seg}>
+                    오늘 <span style={{ color: todayPct >= 100 ? T.green : T.blue, fontWeight: 800 }}>{todayPct}%</span>
+                  </span>
+                )}
+                <span style={seg}>
+                  이번 주 <span style={{ color: T.blue, fontWeight: 800 }}>{wkPct}%</span>
+                </span>
+                <span style={seg}>
+                  제출 <span style={{ color: subCount === 2 ? T.green : T.text, fontWeight: 800 }}>{subCount}/2</span>
+                </span>
+                {subCount < 2 &&
+                  (nowB.pts > 0 ? (
+                    <span style={{ ...seg, color: T.orange }}>지금 제출하면 🚀+{nowB.pts}점</span>
+                  ) : nowB.pts === 0 ? (
+                    <span style={{ ...seg, color: T.orange }}>마감 오늘 오전 10시 — 정시 제출하세요</span>
+                  ) : (
+                    <span style={{ ...seg, color: T.red }}>⚠️ 마감 지남 — 미제출·지각 -5점</span>
+                  ))}
+              </div>
+            );
+          })()}
+
         {/* ── 전체 진행률 ── */}
         <div style={card()}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
@@ -1097,11 +1139,11 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           </div>
         </div>
 
-        {/* ── 교육 평가 (담당자·관리자가 입력, 본인에게 공개) ── */}
-        {(mentor || Object.keys(reviews).length > 0) && (
+        {/* ── 교육 평가: 자동 점수는 실시간, 담당자 점수는 평가 후 합산 ── */}
+        {!isStaff && (
           <div style={card(12)}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-              <span style={{ fontSize: 15, fontWeight: 700 }}>📋 교육 평가</span>
+              <span style={{ fontSize: 15, fontWeight: 700 }}>📋 내 점수</span>
               {mentor && <span style={{ fontSize: 13, fontWeight: 700, color: T.sub }}>담당 {mentor}</span>}
             </div>
             {WEEKS.map((w) => {
@@ -1109,20 +1151,27 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               const rv = calcWeekReview(reviews["w" + w.no], checks, goals, submissions, targets, w.no);
               return (
                 <div key={w.no} style={{ padding: "9px 0", borderBottom: `1px solid ${T.line}` }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                     <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T[WEEK_COLOR[w.no]] }}>{w.no}주차</span>
                     {rv.entered ? (
                       <span style={{ fontSize: 13, fontWeight: 800, color: T.green, background: T.greenSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
-                        {rv.total}점{rv.bonus > 0 ? ` (🚀+${rv.bonus})` : ""}
+                        {rv.total}점{rv.bonus !== 0 ? ` (${rv.bonus > 0 ? "🚀+" : "⚠️"}${rv.bonus})` : ""}
                       </span>
                     ) : (
-                      <span style={{ fontSize: 13, color: T.faint }}>평가 전</span>
+                      <>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: T.blue, background: T.blueSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
+                          실시간 {rv.live}점
+                        </span>
+                        <span style={{ fontSize: 12, color: T.faint }}>
+                          자동 {Math.round((rv.pptAuto + rv.bookAuto) * 10) / 10}/30 · 가점 {rv.bonus > 0 ? `+${rv.bonus}` : rv.bonus} · 담당자 평가 대기 /70
+                        </span>
+                      </>
                     )}
                     {r.by && <span style={{ marginLeft: "auto", fontSize: 12, color: T.faint }}>{r.by}</span>}
                   </div>
                   {rv.entered && (
                     <div style={{ fontSize: 12, color: T.faint, lineHeight: 1.7, marginTop: 4, paddingLeft: 54 }}>
-                      PPT 달성 {rv.pptAuto}/20 · 정확성 {r.acc != null ? r.acc : "─"}/20 · 독창성 {r.orig != null ? r.orig : "─"}/10 · 독서 달성 {rv.bookAuto}/10 · 논리 {r.logic != null ? r.logic : "─"}/10 · TEST {r.test != null ? r.test : "─"}/30 · 제출 +{rv.bonus}
+                      PPT 달성 {rv.pptAuto}/20 · 정확성 {r.acc != null ? r.acc : "─"}/20 · 서평 {r.essay != null ? r.essay : "─"}/10 · 독서 달성 {rv.bookAuto}/10 · 책 TEST {r.bookTest != null ? r.bookTest : "─"}/10 · 보고서 TEST {r.test != null ? r.test : "─"}/30 · 가점 {rv.bonus > 0 ? `+${rv.bonus}` : rv.bonus}
                     </div>
                   )}
                   {r.comment && (
@@ -1132,23 +1181,44 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               );
             })}
             {(() => {
-              const evaluated = WEEKS.map((w) => calcWeekReview(reviews["w" + w.no], checks, goals, submissions, targets, w.no)).filter((x) => x.entered);
+              const all = WEEKS.map((w) => calcWeekReview(reviews["w" + w.no], checks, goals, submissions, targets, w.no));
+              const evaluated = all.filter((x) => x.entered);
               const avg = evaluated.length ? Math.round((evaluated.reduce((s, x) => s + x.total, 0) / evaluated.length) * 10) / 10 : null;
               const fc = reviews.final || {};
               return (
-                <div style={{ padding: "9px 0 0" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T.orange }}>종합</span>
-                    {avg !== null ? (
-                      <span style={{ fontSize: 13, fontWeight: 800, color: T.orange, background: T.orangeSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
-                        {avg}점 <span style={{ fontWeight: 600 }}>· {evaluated.length}개 주차 평균</span>
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: 13, color: T.faint }}>평가 전</span>
-                    )}
+                <>
+                  <div style={{ padding: "9px 0 0" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T.orange }}>종합</span>
+                      {avg !== null ? (
+                        <span style={{ fontSize: 13, fontWeight: 800, color: T.orange, background: T.orangeSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
+                          {avg}점 <span style={{ fontWeight: 600 }}>· {evaluated.length}개 주차 평균</span>
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 13, color: T.faint }}>평가 완료된 주차가 생기면 자동 계산돼요</span>
+                      )}
+                    </div>
+                    {fc.comment && <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.6, marginTop: 4, paddingLeft: 54 }}>{fc.comment}</div>}
                   </div>
-                  {fc.comment && <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.6, marginTop: 4, paddingLeft: 54 }}>{fc.comment}</div>}
-                </div>
+                  {/* 주차 점수 추이 바 — 흐린 막대는 평가 전 실시간 점수 */}
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginTop: 14, padding: "0 4px" }}>
+                    {WEEKS.map((w, i) => {
+                      const rv = all[i];
+                      const liveScore = rv.entered ? rv.total : Math.max(0, rv.live);
+                      const h = Math.max(3, Math.round((liveScore / 105) * 56));
+                      return (
+                        <div key={w.no} style={{ flex: 1, textAlign: "center" }}>
+                          <div style={{ fontSize: 10.5, fontWeight: 800, color: T[WEEK_COLOR[w.no]], marginBottom: 2 }}>{liveScore}</div>
+                          <div style={{ height: h, background: T[WEEK_COLOR[w.no]], borderRadius: 4, opacity: rv.entered ? 1 : 0.4 }} />
+                          <div style={{ fontSize: 10.5, color: T.faint, marginTop: 3 }}>{w.no}주</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 11, color: T.faint, textAlign: "center", marginTop: 6 }}>
+                    흐린 막대 = 평가 전 실시간 자동 점수 · 진한 막대 = 평가 완료 점수
+                  </div>
+                </>
               );
             })()}
           </div>
@@ -1196,12 +1266,12 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
         <div style={card(12)}>
           <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>📐 평가 기준</div>
           <div style={{ fontSize: 12.5, color: T.faint, marginBottom: 10 }}>
-            주차마다 아래 기준으로 평가돼요 · 주차 100점 + 조기제출 가점 최대 5점 · 종합은 4주 평균
+            주차 100점 + 제출 가점 · 종합은 4주 평균 · (자동)은 매일 실시간 반영
           </div>
           {[
-            { cat: "PPT", pts: "40", color: "blue", items: "목표달성률 20 (자동 집계) · 정확성 20 — 종합 성실성" },
-            { cat: "독후감", pts: "30", color: "purple", items: "독창성·주관 10 · 목표달성률 10 (자동 집계) · 논리적 일관성 10" },
-            { cat: "보고서", pts: "30", color: "w2", items: "기본 프로젝트 지식 TEST 30" },
+            { cat: "PPT", pts: "40", color: "blue", items: "달성률 20 (자동) + 정확성 20" },
+            { cat: "책 서평", pts: "30", color: "purple", items: "서평(독창성·주관·논리) 10 + 달성률 10 (자동) + 책 TEST 10" },
+            { cat: "보고서", pts: "30", color: "w2", items: "지식 TEST 30" },
           ].map((row) => (
             <div key={row.cat} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${T.line}` }}>
               <span
@@ -1223,7 +1293,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
             </div>
           ))}
           <div style={{ marginTop: 10, padding: "9px 12px", borderRadius: 8, background: T.orangeSoft, color: T.orange, fontSize: 12.5, fontWeight: 700, lineHeight: 1.6 }}>
-            🚀 조기제출 가점 — 마감(마지막 날 오전 10시) 기준: 2일 전까지 +5 · 전날까지 +3 · 정시 +1 · 지각 0 (PPT·독후감 평균)
+            🚀 제출 가점 — 2일 전까지 +5 · 전날까지 +3 · 정시 0 · 지각 -5 (마감: 마지막 날 오전 10시, PPT·서평 평균)
           </div>
         </div>
 
@@ -1804,7 +1874,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
         <div style={{ marginTop: 28, textAlign: "center", fontSize: 12, color: T.faint, lineHeight: 1.7 }}>
           체크·목표·일과 기록은 온라인에 자동 저장돼요 — 어느 기기에서 접속해도 같은 기록이 보여요
           <br />
-          제출물(PPT 작성본·독후감): 매주 마지막 날 오전 10시까지 · TEST: 매주 마지막 날 오후 4시
+          제출물(PPT 작성본·책 서평): 매주 마지막 날 오전 10시까지 · TEST: 매주 마지막 날 오후 4시
         </div>
       </div>
     </div>
@@ -2003,7 +2073,8 @@ function ReviewPanel({ T, me, setSaveState }) {
     <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 8, padding: 18 }}>
       <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>평가 입력</div>
       <div style={{ fontSize: 12.5, color: T.faint, marginBottom: 14, lineHeight: 1.6 }}>
-        10점 만점 + 코멘트. 입력칸 밖을 누르면 자동 저장되고, 신입 본인 화면의 평가 카드에 바로 표시돼요.
+        달성률·제출가점은 자동 계산돼요. 정확성(/20)·서평(/10)·책 TEST(/10)·보고서 TEST(/30)와 코멘트만 입력하면
+        칸 밖을 누르는 순간 저장되고 신입 본인 화면에 바로 표시돼요.
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
         {names.map((n) => {
@@ -2039,7 +2110,7 @@ function ReviewPanel({ T, me, setSaveState }) {
           const items = SCHEDULE.filter((dd) => dd.isLast).flatMap((dd) =>
             dd.tasks
               .filter((tt) => tt.cat === "제출")
-              .map((tt) => ({ wk: dd.week, key: `${dd.key}:${tt.id}`, label: tt.id === "report-ppt" ? "PPT 작성본" : "독후감" }))
+              .map((tt) => ({ wk: dd.week, key: `${dd.key}:${tt.id}`, label: tt.id === "report-ppt" ? "PPT 작성본" : "책 서평" }))
           );
           const have = items.filter((it) => subs[it.key]);
           return (
@@ -2094,7 +2165,7 @@ function ReviewPanel({ T, me, setSaveState }) {
                 <span style={{ fontSize: 12.5, fontWeight: 700, color: T.sub }}>
                   합계 {rv.total}점{" "}
                   <span style={{ color: T.faint, fontWeight: 600 }}>
-                    (자동: PPT달성 {rv.pptAuto}/20 · 독서달성 {rv.bookAuto}/10 · 제출가점 +{rv.bonus})
+                    (자동: PPT달성 {rv.pptAuto}/20 · 독서달성 {rv.bookAuto}/10 · 제출가점 {rv.bonus > 0 ? `+${rv.bonus}` : rv.bonus})
                   </span>
                 </span>
                 {r.by && <span style={{ marginLeft: "auto", fontSize: 11.5, color: T.faint }}>{r.by}</span>}
