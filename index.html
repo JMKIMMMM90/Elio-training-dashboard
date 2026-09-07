@@ -370,7 +370,7 @@ function weekAreaRate(checks, goals, targets, weekNo, areaId) {
   return days.reduce((s, d) => s + areaScore(checks, goals, d.key, areaId), 0) / days.length;
 }
 
-// 주차 제출 가점: PPT 작성본·서평 두 파일의 가점 평균.
+// 주차 제출 가점: PPT 작성본·서평 두 파일이 각각 가점을 받아 합산 (주당 -10 ~ +10).
 // 마감이 지나도록 미제출이면 지각(-5)과 동일 취급 (지각 제출이 미제출보다 불리해지는 역전 방지)
 function weekBonus(submissions, weekNo) {
   const lastDay = SCHEDULE.find((d) => d.week === weekNo && d.isLast);
@@ -380,7 +380,7 @@ function weekBonus(submissions, weekNo) {
     if (m && m.at) return submitBonus(weekNo, m.at).pts;
     return Date.now() > deadline ? -5 : 0;
   });
-  return Math.round(((pts[0] + pts[1]) / 2) * 10) / 10;
+  return pts[0] + pts[1];
 }
 
 // 담당자 입력 항목 (배점) — PPT 40 = 달성률 20(자동)+정확성 20 /
@@ -392,7 +392,7 @@ const REVIEW_ITEMS = [
   { id: "test", label: "보고서 TEST", max: 30 },
 ];
 
-// 주차 점수 계산(100점 만점, 제출 가점은 보너스로 별도): 자동(PPT달성 20 + 독서달성 10) + 담당자 4항목
+// 주차 점수 계산(100점 만점, 제출 가점은 별도 합산): 자동(PPT달성 20 + 독서달성 10) + 담당자 4항목
 function calcWeekReview(r, checks, goals, submissions, targets, weekNo) {
   const pptAuto = Math.round(weekAreaRate(checks, goals, targets, weekNo, "ppt") * 20 * 10) / 10;
   const bookAuto = Math.round(weekAreaRate(checks, goals, targets, weekNo, "book") * 10 * 10) / 10;
@@ -415,7 +415,7 @@ function calcFinalTest(ft, cfgFinal) {
   return { entered: true, score, base, per };
 }
 
-// 누적 점수(500점제): 주차 4개(평가 전엔 실시간) + FINAL. 가점은 보너스로 별도 합산
+// 누적 점수(500점제): 주차 4개(평가 전엔 실시간) + FINAL. 가점은 별도 합산
 function calcCumulative(reviews, checks, goals, submissions, targets, cfgFinal) {
   const weeks = WEEKS.map((w) => calcWeekReview((reviews || {})["w" + w.no], checks, goals, submissions, targets, w.no));
   const ft = calcFinalTest((reviews || {}).finalTest, cfgFinal);
@@ -697,7 +697,7 @@ function AllView({ T }) {
       const evaluated = cumU.weeks.filter((x) => x.entered);
       const revSummary =
         `누적 ${cumU.cum}/500` +
-        (cumU.bonus !== 0 ? ` (보너스 ${cumU.bonus > 0 ? "+" : ""}${cumU.bonus})` : "") +
+        (cumU.bonus !== 0 ? ` (가점 ${cumU.bonus > 0 ? "+" : ""}${cumU.bonus})` : "") +
         (evaluated.length ? " | 주차 " + cumU.weeks.map((x) => (x.entered ? x.total : "─")).join(" · ") : "");
       const todayPct = todayD
         ? Math.round((todayD.tasks.reduce((s, t) => s + taskScore(checks, goals, todayD, t), 0) / todayD.tasks.length) * 100)
@@ -1210,7 +1210,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               <span style={{ fontSize: 13, fontWeight: 800, color: T.blue }}>
                 누적 {cumu.cum} / 500
                 {cumu.bonus !== 0 && (
-                  <span style={{ color: cumu.bonus > 0 ? T.green : T.red }}> · 보너스 {cumu.bonus > 0 ? `+${cumu.bonus}` : cumu.bonus}</span>
+                  <span style={{ color: cumu.bonus > 0 ? T.green : T.red }}> · 가점 {cumu.bonus > 0 ? `+${cumu.bonus}` : cumu.bonus}</span>
                 )}
               </span>
             ) : (
@@ -1303,7 +1303,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T.orange }}>누적</span>
               <span style={{ fontSize: 13, fontWeight: 800, color: T.orange, background: T.orangeSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
                 {cumu.cum} / 500
-                {cumu.bonus !== 0 && <span style={{ fontWeight: 700 }}> · 보너스 {cumu.bonus > 0 ? `+${cumu.bonus}` : cumu.bonus}</span>}
+                {cumu.bonus !== 0 && <span style={{ fontWeight: 700 }}> · 가점 {cumu.bonus > 0 ? `+${cumu.bonus}` : cumu.bonus}</span>}
               </span>
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginTop: 10, padding: "0 4px" }}>
@@ -1401,7 +1401,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                       <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T.orange }}>누적</span>
                       <span style={{ fontSize: 13, fontWeight: 800, color: T.orange, background: T.orangeSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
                         {cumu.cum} / 500
-                        {cumu.bonus !== 0 && <span style={{ fontWeight: 700 }}> · 보너스 {cumu.bonus > 0 ? `+${cumu.bonus}` : cumu.bonus}</span>}
+                        {cumu.bonus !== 0 && <span style={{ fontWeight: 700 }}> · 가점 {cumu.bonus > 0 ? `+${cumu.bonus}` : cumu.bonus}</span>}
                       </span>
                     </div>
                     {fc.comment && <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.6, marginTop: 4, paddingLeft: 54 }}>{fc.comment}</div>}
@@ -1454,7 +1454,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
         <div style={card(12)}>
           <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>📐 평가 구조</div>
           <div style={{ fontSize: 12.5, color: T.faint, marginBottom: 12 }}>
-            주차 100점 × 4 + 4주차 FINAL PPT TEST 100점 = 총 500점 · 제출 가점은 만점 외 보너스
+            주차 100점 × 4 + 4주차 FINAL PPT TEST 100점 = 총 500점 · 제출 가점은 만점 외 추가 점수(파일별 ±5, 주당 최대 ±10)
           </div>
 
           <div style={{ fontSize: 12, fontWeight: 700, color: T.sub, marginBottom: 5 }}>총 500점</div>
@@ -1493,7 +1493,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
             <br />
             마감 2일 전 밤 12시까지 +5 · 전날 밤 12시까지 +3 · 당일 오전 10시까지 0 · 이후 제출/미제출 -5
             <br />
-            <span style={{ fontWeight: 600 }}>PPT 작성본·책 서평 두 파일의 평균으로 계산돼요</span>
+            <span style={{ fontWeight: 600 }}>PPT 작성본·책 서평이 각각 가점을 받아 합산돼요 (주당 -10 ~ +10)</span>
           </div>
         </div>
 
@@ -2626,7 +2626,7 @@ function ReviewPanel({ T, me, setSaveState }) {
                 <span style={{ fontSize: 12.5, fontWeight: 700, color: T.sub }}>
                   합계 {rv.total}/100{" "}
                   <span style={{ color: T.faint, fontWeight: 600 }}>
-                    (자동: PPT달성 {rv.pptAuto}/20 · 독서달성 {rv.bookAuto}/10 · 보너스 가점 {rv.bonus > 0 ? `+${rv.bonus}` : rv.bonus})
+                    (자동: PPT달성 {rv.pptAuto}/20 · 독서달성 {rv.bookAuto}/10 · 제출가점 {rv.bonus > 0 ? `+${rv.bonus}` : rv.bonus})
                   </span>
                 </span>
                 {r.by && <span style={{ marginLeft: "auto", fontSize: 11.5, color: T.faint }}>{r.by}</span>}
