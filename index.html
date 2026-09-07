@@ -1448,48 +1448,106 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           </div>
         </div>
 
-        {/* 3개 과정 — 과정 목표와 배점의 연결 */}
+        {/* 3개 과정 — 과정 목표와 배점을 막대로 시각화 */}
         <div style={card(12)}>
-          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 6 }}>📦 3개 과정</div>
+          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>📦 3개 과정</div>
+
+          {/* 500점을 과정별로 나누면 */}
+          <div style={{ fontSize: 12, fontWeight: 700, color: T.sub, marginBottom: 5 }}>총 500점을 과정별로 나누면</div>
+          <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
+            <div style={{ flex: 260, height: 16, borderRadius: 4, background: T.blue }} />
+            <div style={{ flex: 120, height: 16, borderRadius: 4, background: T.purple }} />
+            <div style={{ flex: 120, height: 16, borderRadius: 4, background: T.w2 }} />
+          </div>
+          <div style={{ display: "flex", gap: 3, marginBottom: 16 }}>
+            <div style={{ flex: 260, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.blue, whiteSpace: "nowrap" }}>PPT 260 (52%)</div>
+            <div style={{ flex: 120, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.purple, whiteSpace: "nowrap" }}>서평 120 (24%)</div>
+            <div style={{ flex: 120, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: T.w2, whiteSpace: "nowrap" }}>보고서 120 (24%)</div>
+          </div>
+
           {[
             {
               icon: "📊",
               name: "PPT",
               color: "blue",
-              pts: "주당 40점 + FINAL 100점",
+              total: "총 260점 · 전체의 52%",
               goal: "표준 장표를 짧은 시간 안에 정확하게 완성하는 실전 제작력을 기릅니다.",
-              detail: "달성률 20 (자동) · 정확성 20 · 4주차 FINAL PPT TEST 100",
+              weekly: [
+                { label: "달성률", pts: 20, auto: true },
+                { label: "정확성", pts: 20 },
+              ],
+              extra: "FINAL PPT TEST 100",
             },
             {
               icon: "📚",
               name: "책 서평",
               color: "purple",
-              pts: "주당 30점",
+              total: "총 120점 · 24%",
               goal: "병원 경영을 보는 자기만의 관점과 논리를 만듭니다.",
-              detail: "서평(독창성·주관·논리) 10 · 달성률 10 (자동) · 책 TEST 10",
+              weekly: [
+                { label: "서평", pts: 10 },
+                { label: "달성률", pts: 10, auto: true },
+                { label: "책 TEST", pts: 10 },
+              ],
             },
             {
               icon: "📋",
               name: "프로젝트 보고서",
               color: "w2",
-              pts: "주당 30점",
+              total: "총 120점 · 24%",
               goal: "실제 프로젝트의 핵심 지식을 익힙니다.",
-              detail: "지식 TEST 30",
+              weekly: [{ label: "지식 TEST", pts: 30 }],
             },
           ].map((c, i) => (
-            <div key={c.name} style={{ padding: "11px 0", borderBottom: i === 2 ? "none" : `1px solid ${T.line}` }}>
+            <div key={c.name} style={{ padding: "12px 0", borderBottom: i === 2 ? "none" : `1px solid ${T.line}` }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
                 <span style={{ fontSize: 14, fontWeight: 800, color: T[c.color] }}>
                   {c.icon} {c.name}
                 </span>
                 <span style={{ fontSize: 12, fontWeight: 800, color: T[c.color], background: T[c.color + "Soft"], borderRadius: 8, padding: "2px 8px" }}>
-                  {c.pts}
+                  {c.total}
                 </span>
               </div>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: T.text, lineHeight: 1.6, marginBottom: 3 }}>{c.goal}</div>
-              <div style={{ fontSize: 12, color: T.faint }}>{c.detail}</div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: T.text, lineHeight: 1.6, marginBottom: 8 }}>{c.goal}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: T.faint, width: 52, flexShrink: 0 }}>
+                  주당 {c.weekly.reduce((s, x) => s + x.pts, 0)}점
+                </span>
+                <div style={{ flex: 1, display: "flex", gap: 3 }}>
+                  {c.weekly.map((s) => (
+                    <div
+                      key={s.label}
+                      style={{
+                        flex: s.pts,
+                        height: 20,
+                        borderRadius: 4,
+                        background: s.auto ? T[c.color + "Soft"] : T[c.color],
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <span style={{ fontSize: 10, fontWeight: 800, whiteSpace: "nowrap", color: s.auto ? T[c.color] : "#fff" }}>
+                        {s.label} {s.pts}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {c.extra && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: T.faint, width: 52, flexShrink: 0 }}>4주차</span>
+                  <div style={{ flex: 1, height: 20, borderRadius: 4, background: T.orange, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, color: "#fff", whiteSpace: "nowrap" }}>{c.extra}</span>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
+          <div style={{ fontSize: 11, color: T.faint, textAlign: "center", marginTop: 8 }}>
+            연한 조각 = 자동 집계(매일 실시간 반영) · 진한 조각 = 담당자 평가
+          </div>
         </div>
 
         {/* 평가 구조 시각화 */}
