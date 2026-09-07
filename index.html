@@ -1312,8 +1312,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                 const liveScore = rv.entered ? rv.total : Math.max(0, rv.live);
                 return (
                   <div key={w.no} style={{ flex: 1, textAlign: "center" }}>
-                    <div style={{ fontSize: 10.5, fontWeight: 800, color: T[WEEK_COLOR[w.no]], marginBottom: 2 }}>{liveScore}</div>
-                    <div style={{ height: 56, borderRadius: 4, background: T.cardSoft, display: "flex", alignItems: "flex-end", overflow: "hidden" }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: T[WEEK_COLOR[w.no]], marginBottom: 3 }}>{liveScore}/100</div>
+                    <div style={{ height: 96, borderRadius: 6, background: T.cardSoft, display: "flex", alignItems: "flex-end", overflow: "hidden" }}>
                       <div style={{ width: "100%", height: `${Math.min(100, Math.max(2, liveScore))}%`, background: T[WEEK_COLOR[w.no]], opacity: rv.entered ? 1 : 0.45, borderRadius: 4 }} />
                     </div>
                     <div style={{ fontSize: 10.5, color: T.faint, marginTop: 3 }}>{w.no}주</div>
@@ -1413,8 +1413,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                       const liveScore = rv.entered ? rv.total : Math.max(0, rv.live);
                       return (
                         <div key={w.no} style={{ flex: 1, textAlign: "center" }}>
-                          <div style={{ fontSize: 10.5, fontWeight: 800, color: T[WEEK_COLOR[w.no]], marginBottom: 2 }}>{liveScore}</div>
-                          <div style={{ height: 56, borderRadius: 4, background: T.cardSoft, display: "flex", alignItems: "flex-end", overflow: "hidden" }}>
+                          <div style={{ fontSize: 12, fontWeight: 800, color: T[WEEK_COLOR[w.no]], marginBottom: 3 }}>{liveScore}/100</div>
+                          <div style={{ height: 96, borderRadius: 6, background: T.cardSoft, display: "flex", alignItems: "flex-end", overflow: "hidden" }}>
                             <div style={{ width: "100%", height: `${Math.min(100, Math.max(2, liveScore))}%`, background: T[WEEK_COLOR[w.no]], opacity: rv.entered ? 1 : 0.45, borderRadius: 4 }} />
                           </div>
                           <div style={{ fontSize: 10.5, color: T.faint, marginTop: 3 }}>{w.no}주</div>
