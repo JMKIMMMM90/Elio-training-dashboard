@@ -1262,6 +1262,73 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
 
         )}
 
+        {/* ── 홈: 내 점수 요약 (실시간, 상세·코멘트는 내 평가 탭) ── */}
+        {view === "home" && (
+          <div style={card(12)}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+              <span style={{ fontSize: 15, fontWeight: 700 }}>📋 내 점수</span>
+              {mentor && <span style={{ fontSize: 13, fontWeight: 700, color: T.sub }}>담당 {mentor}</span>}
+            </div>
+            {WEEKS.map((w, i) => {
+              const rv = cumu.weeks[i];
+              return (
+                <div key={w.no} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${T.line}`, flexWrap: "wrap" }}>
+                  <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T[WEEK_COLOR[w.no]] }}>{w.no}주차</span>
+                  {rv.entered ? (
+                    <span style={{ fontSize: 13, fontWeight: 800, color: T.green, background: T.greenSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
+                      {rv.total}점{rv.bonus !== 0 ? ` (${rv.bonus > 0 ? "🚀+" : "⚠️"}${rv.bonus})` : ""}
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 13, fontWeight: 800, color: T.blue, background: T.blueSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
+                      실시간 {rv.live}점
+                    </span>
+                  )}
+                  <span style={{ fontSize: 12, color: T.faint }}>
+                    {rv.entered ? "평가 완료" : `가점 ${rv.bonus > 0 ? `+${rv.bonus}` : rv.bonus} · 평가 대기 /70`}
+                  </span>
+                </div>
+              );
+            })}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${T.line}` }}>
+              <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T.orange }}>FINAL</span>
+              {cumu.ft.entered ? (
+                <span style={{ fontSize: 13, fontWeight: 800, color: T.orange, background: T.orangeSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
+                  {cumu.ft.score}/100
+                </span>
+              ) : (
+                <span style={{ fontSize: 12.5, color: T.faint }}>4주차 PPT TEST (100점) — 시험 후 반영돼요</span>
+              )}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0" }}>
+              <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T.orange }}>누적</span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: T.orange, background: T.orangeSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
+                {cumu.cum} / 500
+                {cumu.bonus !== 0 && <span style={{ fontWeight: 700 }}> · 보너스 {cumu.bonus > 0 ? `+${cumu.bonus}` : cumu.bonus}</span>}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginTop: 10, padding: "0 4px" }}>
+              {WEEKS.map((w, i) => {
+                const rv = cumu.weeks[i];
+                const liveScore = rv.entered ? rv.total : Math.max(0, rv.live);
+                const h = Math.max(3, Math.round((liveScore / 100) * 56));
+                return (
+                  <div key={w.no} style={{ flex: 1, textAlign: "center" }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 800, color: T[WEEK_COLOR[w.no]], marginBottom: 2 }}>{liveScore}</div>
+                    <div style={{ height: h, background: T[WEEK_COLOR[w.no]], borderRadius: 4, opacity: rv.entered ? 1 : 0.4 }} />
+                    <div style={{ fontSize: 10.5, color: T.faint, marginTop: 3 }}>{w.no}주</div>
+                  </div>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => setView("score")}
+              style={{ display: "block", margin: "12px auto 0", border: "none", background: "transparent", color: T.blue, cursor: "pointer", fontFamily: FONT, fontSize: 12.5, fontWeight: 700, textDecoration: "underline", textUnderlineOffset: 2 }}
+            >
+              항목별 상세 점수 · 담당자 코멘트 보기 →
+            </button>
+          </div>
+        )}
+
         {/* ── 내 평가 탭: 점수 상세 (자동 점수는 실시간, 담당자 점수는 평가 후 합산) ── */}
         {view === "score" && (
           <div style={card(12)}>
@@ -2098,8 +2165,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
             ]
           : [
               { id: "home", icon: "🏠", label: "홈" },
-              { id: "guide", icon: "📖", label: "교육안내" },
               { id: "plan", icon: "🎯", label: "목표관리" },
+              { id: "guide", icon: "📖", label: "교육안내" },
               { id: "score", icon: "📊", label: "내 평가" },
             ]
         ).map((it) => {
