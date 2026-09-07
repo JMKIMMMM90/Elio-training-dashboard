@@ -1310,11 +1310,12 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               {WEEKS.map((w, i) => {
                 const rv = cumu.weeks[i];
                 const liveScore = rv.entered ? rv.total : Math.max(0, rv.live);
-                const h = Math.max(3, Math.round((liveScore / 100) * 56));
                 return (
                   <div key={w.no} style={{ flex: 1, textAlign: "center" }}>
                     <div style={{ fontSize: 10.5, fontWeight: 800, color: T[WEEK_COLOR[w.no]], marginBottom: 2 }}>{liveScore}</div>
-                    <div style={{ height: h, background: T[WEEK_COLOR[w.no]], borderRadius: 4, opacity: rv.entered ? 1 : 0.4 }} />
+                    <div style={{ height: 56, borderRadius: 4, background: T.cardSoft, display: "flex", alignItems: "flex-end", overflow: "hidden" }}>
+                      <div style={{ width: "100%", height: `${Math.min(100, Math.max(2, liveScore))}%`, background: T[WEEK_COLOR[w.no]], opacity: rv.entered ? 1 : 0.45, borderRadius: 4 }} />
+                    </div>
                     <div style={{ fontSize: 10.5, color: T.faint, marginTop: 3 }}>{w.no}주</div>
                   </div>
                 );
@@ -1410,18 +1411,19 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                     {WEEKS.map((w, i) => {
                       const rv = cumu.weeks[i];
                       const liveScore = rv.entered ? rv.total : Math.max(0, rv.live);
-                      const h = Math.max(3, Math.round((liveScore / 100) * 56));
                       return (
                         <div key={w.no} style={{ flex: 1, textAlign: "center" }}>
                           <div style={{ fontSize: 10.5, fontWeight: 800, color: T[WEEK_COLOR[w.no]], marginBottom: 2 }}>{liveScore}</div>
-                          <div style={{ height: h, background: T[WEEK_COLOR[w.no]], borderRadius: 4, opacity: rv.entered ? 1 : 0.4 }} />
+                          <div style={{ height: 56, borderRadius: 4, background: T.cardSoft, display: "flex", alignItems: "flex-end", overflow: "hidden" }}>
+                            <div style={{ width: "100%", height: `${Math.min(100, Math.max(2, liveScore))}%`, background: T[WEEK_COLOR[w.no]], opacity: rv.entered ? 1 : 0.45, borderRadius: 4 }} />
+                          </div>
                           <div style={{ fontSize: 10.5, color: T.faint, marginTop: 3 }}>{w.no}주</div>
                         </div>
                       );
                     })}
                   </div>
                   <div style={{ fontSize: 11, color: T.faint, textAlign: "center", marginTop: 6 }}>
-                    흐린 막대 = 평가 전 실시간 자동 점수 · 진한 막대 = 평가 완료 점수
+                    막대 전체 = 100점 만점 · 흐린 채움 = 실시간 자동 점수 · 진한 채움 = 평가 완료
                   </div>
                 </>
               );
