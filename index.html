@@ -392,17 +392,36 @@ const REVIEW_ITEMS = [
   { id: "test", label: "보고서 TEST", max: 30 },
 ];
 
-// 주차 점수 계산: 자동(PPT달성 20 + 독서달성 10 + 제출가점 ±5) + 담당자(정확성·서평·책TEST·보고서TEST)
+// 주차 점수 계산(100점 만점, 제출 가점은 보너스로 별도): 자동(PPT달성 20 + 독서달성 10) + 담당자 4항목
 function calcWeekReview(r, checks, goals, submissions, targets, weekNo) {
   const pptAuto = Math.round(weekAreaRate(checks, goals, targets, weekNo, "ppt") * 20 * 10) / 10;
   const bookAuto = Math.round(weekAreaRate(checks, goals, targets, weekNo, "book") * 10 * 10) / 10;
   const bonus = weekBonus(submissions, weekNo);
   const m = r || {};
   const manual = (m.acc || 0) + (m.essay || 0) + (m.bookTest || 0) + (m.test || 0);
-  const total = Math.round((pptAuto + bookAuto + manual + bonus) * 10) / 10;
+  const total = Math.round((pptAuto + bookAuto + manual) * 10) / 10;
   const entered = !!r && (m.acc != null || m.essay != null || m.bookTest != null || m.test != null || !!m.comment);
-  const live = Math.round((pptAuto + bookAuto + bonus) * 10) / 10; // 평가 전에도 보이는 실시간 점수
+  const live = Math.round((pptAuto + bookAuto) * 10) / 10; // 평가 전에도 보이는 실시간 자동 점수
   return { pptAuto, bookAuto, bonus, total, live, entered };
+}
+
+// FINAL PPT TEST(100점): 작성 장수 비례(기준 장수=100점, 상한 100) − 오류 건수 × 감점단가
+function calcFinalTest(ft, cfgFinal) {
+  const base = (cfgFinal && cfgFinal.baseSlides) || 20;
+  const per = cfgFinal && cfgFinal.perError != null ? cfgFinal.perError : 2;
+  if (!ft || ft.slides == null) return { entered: false, score: 0, base, per };
+  const qty = Math.min(100, (ft.slides / base) * 100);
+  const score = Math.max(0, Math.round((qty - (ft.errors || 0) * per) * 10) / 10);
+  return { entered: true, score, base, per };
+}
+
+// 누적 점수(500점제): 주차 4개(평가 전엔 실시간) + FINAL. 가점은 보너스로 별도 합산
+function calcCumulative(reviews, checks, goals, submissions, targets, cfgFinal) {
+  const weeks = WEEKS.map((w) => calcWeekReview((reviews || {})["w" + w.no], checks, goals, submissions, targets, w.no));
+  const ft = calcFinalTest((reviews || {}).finalTest, cfgFinal);
+  const cum = Math.round((weeks.reduce((s, x) => s + (x.entered ? x.total : x.live), 0) + (ft.entered ? ft.score : 0)) * 10) / 10;
+  const bonus = Math.round(weeks.reduce((s, x) => s + x.bonus, 0) * 10) / 10;
+  return { weeks, ft, cum, bonus };
 }
 
 // 오늘이 속한(또는 다음) 주차
@@ -674,15 +693,12 @@ function AllView({ T }) {
       const checks = (v && v.checks) || {};
       const goals = (v && v.goals) || {};
       const rv = (v && v.reviews) || {};
-      const wkRv = WEEKS.map((w) =>
-        calcWeekReview(rv["w" + w.no], checks, goals, (v && v.submissions) || {}, cfgAll.targets || {}, w.no)
-      );
-      const evaluated = wkRv.filter((x) => x.entered);
-      const revSummary = evaluated.length
-        ? wkRv.map((x) => (x.entered ? x.total : "─")).join(" · ") +
-          " | 종합 " +
-          Math.round((evaluated.reduce((s, x) => s + x.total, 0) / evaluated.length) * 10) / 10
-        : null;
+      const cumU = calcCumulative(rv, checks, goals, (v && v.submissions) || {}, cfgAll.targets || {}, cfgAll.finalTest);
+      const evaluated = cumU.weeks.filter((x) => x.entered);
+      const revSummary =
+        `누적 ${cumU.cum}/500` +
+        (cumU.bonus !== 0 ? ` (보너스 ${cumU.bonus > 0 ? "+" : ""}${cumU.bonus})` : "") +
+        (evaluated.length ? " | 주차 " + cumU.weeks.map((x) => (x.entered ? x.total : "─")).join(" · ") : "");
       const todayPct = todayD
         ? Math.round((todayD.tasks.reduce((s, t) => s + taskScore(checks, goals, todayD, t), 0) / todayD.tasks.length) * 100)
         : null;
@@ -1014,6 +1030,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
 
   const curWeek = wkList.find((w) => w.no === week);
   const curDays = SCHEDULE.filter((d) => d.week === week);
+  const cumu = calcCumulative(reviews, checks, goals, submissions, targets, cfg.finalTest);
   const weekHasPlan = curDays.some((d) => AREA_IDS.some((a) => asList(goals[d.key] && goals[d.key][a]).length > 0));
 
   const card = (mt = 0) => ({
@@ -1119,12 +1136,50 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
             );
           })()}
 
-        {/* ── 전체 진행률 ── */}
+        {/* ── Road to INITIAN: 500점 누적 게이지 + 할 일 진행률 ── */}
         <div style={card()}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10, flexWrap: "wrap", gap: 4 }}>
             <span style={{ fontSize: 15, fontWeight: 800 }}>Road to INITIAN</span>
-            <span style={{ fontSize: 13, color: T.faint }}>{Math.round(stats.all.done)} / {stats.all.total} 완료</span>
+            {!isStaff ? (
+              <span style={{ fontSize: 13, fontWeight: 800, color: T.blue }}>
+                누적 {cumu.cum} / 500
+                {cumu.bonus !== 0 && (
+                  <span style={{ color: cumu.bonus > 0 ? T.green : T.red }}> · 보너스 {cumu.bonus > 0 ? `+${cumu.bonus}` : cumu.bonus}</span>
+                )}
+              </span>
+            ) : (
+              <span style={{ fontSize: 13, color: T.faint }}>{Math.round(stats.all.done)} / {stats.all.total} 완료</span>
+            )}
           </div>
+          {!isStaff && (
+            <div style={{ display: "flex", gap: 5, marginBottom: 14 }}>
+              {[
+                ...cumu.weeks.map((x, i) => ({
+                  label: `${i + 1}주`,
+                  color: T[WEEK_COLOR[i + 1]],
+                  val: x.entered ? x.total : x.live,
+                  solid: x.entered,
+                })),
+                { label: "FINAL", color: T.orange, val: cumu.ft.entered ? cumu.ft.score : 0, solid: cumu.ft.entered },
+              ].map((s) => (
+                <div key={s.label} style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ height: 8, borderRadius: 4, background: T.cardSoft, overflow: "hidden" }}>
+                    <div style={{ width: `${Math.min(100, Math.max(0, s.val))}%`, height: "100%", background: s.color, opacity: s.solid ? 1 : 0.45, borderRadius: 4 }} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: T.faint }}>{s.label}</span>
+                    <span style={{ fontSize: 10, fontWeight: 800, color: s.color }}>{Math.round(s.val)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {!isStaff && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.sub }}>할 일 진행률</span>
+              <span style={{ fontSize: 12, color: T.faint }}>{Math.round(stats.all.done)} / {stats.all.total} 완료</span>
+            </div>
+          )}
           <Bar pct={stats.all.pct} h={10} T={T} />
           <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
             {WEEKS.map((w) => (
@@ -1181,31 +1236,46 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               );
             })}
             {(() => {
-              const all = WEEKS.map((w) => calcWeekReview(reviews["w" + w.no], checks, goals, submissions, targets, w.no));
-              const evaluated = all.filter((x) => x.entered);
-              const avg = evaluated.length ? Math.round((evaluated.reduce((s, x) => s + x.total, 0) / evaluated.length) * 10) / 10 : null;
+              const ftr = reviews.finalTest || {};
+              const ft = cumu.ft;
               const fc = reviews.final || {};
               return (
                 <>
-                  <div style={{ padding: "9px 0 0" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T.orange }}>종합</span>
-                      {avg !== null ? (
-                        <span style={{ fontSize: 13, fontWeight: 800, color: T.orange, background: T.orangeSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
-                          {avg}점 <span style={{ fontWeight: 600 }}>· {evaluated.length}개 주차 평균</span>
-                        </span>
+                  {/* FINAL PPT TEST (4주차 시험, 100점) */}
+                  <div style={{ padding: "9px 0", borderBottom: `1px solid ${T.line}` }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T.orange }}>FINAL</span>
+                      {ft.entered ? (
+                        <>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: T.orange, background: T.orangeSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
+                            {ft.score}/100
+                          </span>
+                          <span style={{ fontSize: 12, color: T.faint }}>
+                            작성 {ftr.slides}장 · 오류 {ftr.errors || 0}건
+                          </span>
+                        </>
                       ) : (
-                        <span style={{ fontSize: 13, color: T.faint }}>평가 완료된 주차가 생기면 자동 계산돼요</span>
+                        <span style={{ fontSize: 13, color: T.faint }}>4주차 PPT TEST (100점) — 시험 후 반영돼요</span>
                       )}
+                    </div>
+                  </div>
+                  {/* 누적 종합 (500점제) */}
+                  <div style={{ padding: "9px 0 0" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T.orange }}>누적</span>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: T.orange, background: T.orangeSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
+                        {cumu.cum} / 500
+                        {cumu.bonus !== 0 && <span style={{ fontWeight: 700 }}> · 보너스 {cumu.bonus > 0 ? `+${cumu.bonus}` : cumu.bonus}</span>}
+                      </span>
                     </div>
                     {fc.comment && <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.6, marginTop: 4, paddingLeft: 54 }}>{fc.comment}</div>}
                   </div>
                   {/* 주차 점수 추이 바 — 흐린 막대는 평가 전 실시간 점수 */}
                   <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginTop: 14, padding: "0 4px" }}>
                     {WEEKS.map((w, i) => {
-                      const rv = all[i];
+                      const rv = cumu.weeks[i];
                       const liveScore = rv.entered ? rv.total : Math.max(0, rv.live);
-                      const h = Math.max(3, Math.round((liveScore / 105) * 56));
+                      const h = Math.max(3, Math.round((liveScore / 100) * 56));
                       return (
                         <div key={w.no} style={{ flex: 1, textAlign: "center" }}>
                           <div style={{ fontSize: 10.5, fontWeight: 800, color: T[WEEK_COLOR[w.no]], marginBottom: 2 }}>{liveScore}</div>
@@ -1266,12 +1336,13 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
         <div style={card(12)}>
           <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>📐 평가 기준</div>
           <div style={{ fontSize: 12.5, color: T.faint, marginBottom: 10 }}>
-            주차 100점 + 제출 가점 · 종합은 4주 평균 · (자동)은 매일 실시간 반영
+            총 500점 = 주차 100점 × 4 + FINAL PPT TEST 100점 · 제출 가점은 보너스 · (자동)은 매일 실시간 반영
           </div>
           {[
             { cat: "PPT", pts: "40", color: "blue", items: "달성률 20 (자동) + 정확성 20" },
             { cat: "책 서평", pts: "30", color: "purple", items: "서평(독창성·주관·논리) 10 + 달성률 10 (자동) + 책 TEST 10" },
             { cat: "보고서", pts: "30", color: "w2", items: "지식 TEST 30" },
+            { cat: "FINAL", pts: "100", color: "orange", items: "4주차 PPT TEST — 1시간 내 작성 장수 비례(기준 도달 시 100) − 오류 1건당 감점" },
           ].map((row) => (
             <div key={row.cat} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${T.line}` }}>
               <span
@@ -1862,7 +1933,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
 
         {/* ══════════ 관리 센터 (관리자 전용) ══════════ */}
         {view === "settings" && isAdmin && (
-          <AdminPanel T={T} targets={targets} weeks={wkList} staff={staff} setSaveState={setSaveState} />
+          <AdminPanel T={T} targets={targets} weeks={wkList} staff={staff} finalTest={cfg.finalTest || {}} setSaveState={setSaveState} />
         )}
 
         {saveState === "error" && (
@@ -1883,8 +1954,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
 
 /* ── 소형 컴포넌트 ── */
 
-// 관리자 전용 관리 센터: ①주차 총량 ②과제명 ③담당자 명단 ④신입별 담당자
-function AdminPanel({ T, targets, weeks, staff, setSaveState }) {
+// 관리자 전용 관리 센터: ①주차 총량 ②과제명 ③담당자 명단 ④신입별 담당자 ⑤FINAL TEST 설정
+function AdminPanel({ T, targets, weeks, staff, finalTest, setSaveState }) {
   const [users, setUsers] = useState({});
   const [staffInput, setStaffInput] = useState("");
   useEffect(() => {
@@ -2009,6 +2080,29 @@ function AdminPanel({ T, targets, weeks, staff, setSaveState }) {
           >
             등록
           </button>
+        </div>
+      </div>
+
+      {/* ⑤ FINAL PPT TEST 채점 설정 */}
+      <div style={box}>
+        <div style={secTitle}>FINAL PPT TEST 채점 설정</div>
+        <div style={secDesc}>
+          기준 장수만큼 작성하면 100점(비례 계산), 오류 1건당 감점.
+          평가 탭에서 장수·오류 수만 입력하면 자동 채점돼요. 비우면 기본값(20장 · -2점).
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: T.sub }}>기준 장수</span>
+            <div style={{ width: 80, display: "flex" }}>
+              <TargetInput T={T} value={finalTest.baseSlides || 0} onCommit={(n) => saveDb("config/finalTest/baseSlides", n > 0 ? n : null)} />
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: T.sub }}>오류 1건당 감점</span>
+            <div style={{ width: 80, display: "flex" }}>
+              <TargetInput T={T} value={finalTest.perError || 0} onCommit={(n) => saveDb("config/finalTest/perError", n > 0 ? n : null)} />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2163,9 +2257,9 @@ function ReviewPanel({ T, me, setSaveState }) {
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 7, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 13.5, fontWeight: 800, color: T[WEEK_COLOR[w.no]], flexShrink: 0 }}>{w.no}주차</span>
                 <span style={{ fontSize: 12.5, fontWeight: 700, color: T.sub }}>
-                  합계 {rv.total}점{" "}
+                  합계 {rv.total}/100{" "}
                   <span style={{ color: T.faint, fontWeight: 600 }}>
-                    (자동: PPT달성 {rv.pptAuto}/20 · 독서달성 {rv.bookAuto}/10 · 제출가점 {rv.bonus > 0 ? `+${rv.bonus}` : rv.bonus})
+                    (자동: PPT달성 {rv.pptAuto}/20 · 독서달성 {rv.bookAuto}/10 · 보너스 가점 {rv.bonus > 0 ? `+${rv.bonus}` : rv.bonus})
                   </span>
                 </span>
                 {r.by && <span style={{ marginLeft: "auto", fontSize: 11.5, color: T.faint }}>{r.by}</span>}
@@ -2183,11 +2277,37 @@ function ReviewPanel({ T, me, setSaveState }) {
             </div>
           );
         })}
+      {cur &&
+        (() => {
+          const ftr = (cur.reviews || {}).finalTest || {};
+          const ft = calcFinalTest(ftr, cfg.finalTest);
+          return (
+            <div style={{ padding: "12px 0", borderBottom: `1px solid ${T.line}` }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 7, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13.5, fontWeight: 800, color: T.orange, flexShrink: 0 }}>FINAL PPT TEST</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: T.sub }}>
+                  {ft.entered ? `자동 점수 ${ft.score}/100` : "장수·오류 수만 입력하면 자동 채점"}{" "}
+                  <span style={{ color: T.faint, fontWeight: 600 }}>(기준 {ft.base}장=100점 · 오류 1건당 -{ft.per}점)</span>
+                </span>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: T.sub }}>작성 장수</span>
+                  <ScoreInput T={T} max={999} value={ftr.slides !== undefined ? ftr.slides : null} onCommit={(n) => save("finalTest", { slides: n })} />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: T.sub }}>오류 수</span>
+                  <ScoreInput T={T} max={99} value={ftr.errors !== undefined ? ftr.errors : null} onCommit={(n) => save("finalTest", { errors: n })} />
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       {cur && (
         <div style={{ padding: "12px 0 0" }}>
           <div style={{ fontSize: 13.5, fontWeight: 800, color: T.orange, marginBottom: 7 }}>
             종합 총평{" "}
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: T.faint }}>(종합점수는 평가된 주차들의 평균으로 자동 계산돼요)</span>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: T.faint }}>(누적 점수는 주차+FINAL 합산으로 자동 계산돼요)</span>
           </div>
           <CommentInput T={T} value={((cur.reviews || {}).final || {}).comment || ""} onCommit={(t) => save("final", { comment: t })} />
         </div>

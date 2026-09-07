@@ -31,8 +31,15 @@ git add → commit → push. 별도 배포 명령 없음.
   - 권한 2단계: ADMIN_NAMES 상수(김재민) = "⚙ 관리" 탭(총량·과제명·담당자 명단·신입별
     담당자 지정) + 평가. config/staff에 등록된 담당자 = "📝 평가" 탭. 로그인이 없으므로
     편의상 숨김이지 보안 아님. 관리자·담당자는 전체 현황 목록에서 제외.
-  - 평가(주차 100점 + 제출 가점 ±5): PPT 40(달성률 20 자동 + 정확성 20) /
+  - 평가는 500점제: 주차 100점 × 4 + FINAL PPT TEST 100점. 제출 가점(±5/주)은 만점 외
+    보너스로 별도 합산. 누적은 calcCumulative(평가 전 주차는 실시간 자동점수로 합산).
+  - 주차 100점: PPT 40(달성률 20 자동 + 정확성 20) /
     책 서평 30(서평[독창성·주관·논리] 10 + 달성률 10 자동 + 책 TEST 10) / 보고서 30(TEST 30).
+  - FINAL PPT TEST(calcFinalTest): 점수 = min(100, 장수/기준장수×100) − 오류수×감점단가.
+    기준장수·감점단가는 config/finalTest{baseSlides, perError}(관리 탭에서 설정, 기본 20장/-2점).
+    담당자 입력은 reviews/finalTest = {slides, errors, by, at} — 장수·오류 수만 입력하면 자동 채점.
+  - Road to INITIAN 카드: 5구간(주차 4 + FINAL) 누적 게이지. 평가 완료=진한 채움,
+    평가 전=실시간 자동점수만큼 흐린 채움. 누적 N/500 + 보너스 표기.
     자동 항목은 calcWeekReview·weekAreaRate로 렌더링 시 계산(저장 안 함).
     담당자 입력은 users/<신입>/reviews/w{n} = {acc, essay, bookTest, test, comment, by, at},
     reviews/final = {comment}(종합점수는 평가된 주차 평균 자동). 저장 즉시 신입 본인에게 공개.
