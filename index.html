@@ -1321,7 +1321,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                               {val != null ? val : "─"}/{max}
                             </span>
                           </div>
-                          <div style={{ height: 10, borderRadius: 5, background: T.cardSoft, overflow: "hidden" }}>
+                          <div style={{ height: 10, borderRadius: 5, background: T.card, overflow: "hidden" }}>
                             <div style={{ width: `${val != null ? Math.min(100, (val / max) * 100) : 0}%`, height: "100%", background: color, borderRadius: 5 }} />
                           </div>
                         </div>
@@ -1338,9 +1338,10 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                       const bonusTag = (info) =>
                         info.pts != null && info.pts !== 0 ? ` · 가점 ${info.pts > 0 ? `+${info.pts}` : info.pts}` : "";
                       const sec = { fontSize: 13.5, fontWeight: 800, marginBottom: 2 };
+                      const box = (colorKey) => ({ background: T[colorKey + "Soft"], borderRadius: 8, padding: "10px 12px" });
                       return (
-                        <div style={{ padding: "2px 0 12px 12px", display: "flex", flexDirection: "column", gap: 12 }}>
-                          <div>
+                        <div style={{ padding: "4px 0 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+                          <div style={box("blue")}>
                             <div style={{ ...sec, color: T.blue }}>
                               📊 PPT <span style={{ color: T.faint, fontWeight: 700 }}>소계 {pptSum}/40{bonusTag(pptSub)}</span>
                             </div>
@@ -1348,7 +1349,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                             {bar("정확성 (담당자)", r.acc != null ? r.acc : null, 20, T.blue)}
                             {subLine(pptSub)}
                           </div>
-                          <div>
+                          <div style={box("purple")}>
                             <div style={{ ...sec, color: T.purple }}>
                               📚 서평 <span style={{ color: T.faint, fontWeight: 700 }}>소계 {bookSum}/30{bonusTag(bookSub)}</span>
                             </div>
@@ -1357,7 +1358,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                             {bar("책 TEST (담당자)", r.bookTest != null ? r.bookTest : null, 10, T.purple)}
                             {subLine(bookSub)}
                           </div>
-                          <div>
+                          <div style={box("w2")}>
                             <div style={{ ...sec, color: T.w2 }}>
                               📋 보고서 <span style={{ color: T.faint, fontWeight: 700 }}>소계 {r.test != null ? r.test : 0}/30</span>
                             </div>
