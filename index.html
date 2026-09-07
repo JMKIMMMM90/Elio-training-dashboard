@@ -797,7 +797,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   const defaultWeek = currentWeekNo(today);
 
   const T = THEMES[theme];
-  const [view, setView] = useState("calendar"); // calendar | week | all
+  const [view, setView] = useState("home"); // home | guide | plan | score (+ 관리자: all | review | settings)
+  const [planMode, setPlanMode] = useState("calendar"); // 목표관리 탭 내부: calendar | week
   const [week, setWeek] = useState(defaultWeek);
   const [checks, setChecks] = useState({});
   const [logs, setLogs] = useState({});
@@ -880,6 +881,11 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
     const cb = ref.on("value", (s) => setCfg(s.val() || {}));
     return () => ref.off("value", cb);
   }, []);
+
+  // 관리자·담당자는 신입용 화면(홈 등) 대신 전체 현황에서 시작
+  useEffect(() => {
+    if (isStaff && (view === "home" || view === "plan" || view === "score")) setView("all");
+  }, [isStaff]);
 
   const toggleTask = (dayKey, taskId) => {
     const k = `${dayKey}:${taskId}`;
@@ -1025,12 +1031,71 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
     if (!d) return;
     setWeek(d.week);
     setOpenDay(d.key);
-    setView("week");
+    setView("plan");
+    setPlanMode("week");
   };
 
   const curWeek = wkList.find((w) => w.no === week);
   const curDays = SCHEDULE.filter((d) => d.week === week);
   const cumu = calcCumulative(reviews, checks, goals, submissions, targets, cfg.finalTest);
+  // 홈에 보여줄 "오늘"(교육일이 아니면 다음 교육일)
+  const homeDay = todayIdx >= 0 ? SCHEDULE[todayIdx] : SCHEDULE.find((d) => d.date >= today) || SCHEDULE[SCHEDULE.length - 1];
+
+  // 제출 첨부 UI (Day 카드·홈 제출함 공용)
+  const renderAttach = (dayKey, weekNo, t) => {
+    const k = `${dayKey}:${t.id}`;
+    const m = submissions[k];
+    const busy = uploadingKey === k;
+    const cs = CAT_STYLE["제출"];
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        {busy ? (
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: T.blue }}>⏫ 업로드 중…</span>
+        ) : m ? (
+          <>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: T.sub, flex: 1, minWidth: 120, overflowWrap: "anywhere", lineHeight: 1.5 }}>
+              📄 {m.fileName} ({fmtSize(m.size)})
+            </span>
+            {m.at && (
+              <span style={{ fontSize: 11.5, fontWeight: 800, flexShrink: 0, color: submitBonus(weekNo, m.at).pts > 0 ? T.green : submitBonus(weekNo, m.at).pts < 0 ? T.red : T.sub }}>
+                {submitBonus(weekNo, m.at).label}
+              </span>
+            )}
+            <a
+              href={m.url}
+              target="_blank"
+              rel="noreferrer"
+              style={{ fontSize: 12, fontWeight: 700, color: T.blue, textDecoration: "underline", textUnderlineOffset: 2, flexShrink: 0 }}
+            >
+              다운로드
+            </a>
+            <button
+              onClick={() => deleteSubmission(dayKey, t.id)}
+              style={{ border: "none", background: "transparent", color: T.faint, cursor: "pointer", fontSize: 12, fontWeight: 700, padding: "2px 3px", textDecoration: "underline", textUnderlineOffset: 2, flexShrink: 0 }}
+            >
+              삭제
+            </button>
+          </>
+        ) : (
+          <label
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 700, color: cs.fg, background: T.card, border: `1px solid ${T.line}`, borderRadius: 999, padding: "5px 12px", cursor: "pointer" }}
+          >
+            📎 첨부하기 (HWP·Word·PPT·PDF)
+            <input
+              type="file"
+              accept=".hwp,.hwpx,.doc,.docx,.ppt,.pptx,.pdf"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files[0];
+                if (f) uploadSubmission(dayKey, t.id, f);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        )}
+      </div>
+    );
+  };
   const weekHasPlan = curDays.some((d) => AREA_IDS.some((a) => asList(goals[d.key] && goals[d.key][a]).length > 0));
 
   const card = (mt = 0) => ({
@@ -1051,7 +1116,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
 
   return (
     <div style={{ fontFamily: FONT, background: T.bg, minHeight: "100vh", color: T.text, transition: "background .2s" }}>
-      <div style={{ maxWidth: 720, margin: "0 auto", padding: "28px 16px 80px" }}>
+      <div style={{ maxWidth: 720, margin: "0 auto", padding: "28px 16px 110px" }}>
         {/* ── 헤더 ── */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "4px 4px 20px" }}>
           <div>
@@ -1099,8 +1164,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           </div>
         </div>
 
-        {/* ── 오늘의 미션 스트립 (신입용: 오늘 상태 + 제출 카운트다운) ── */}
-        {!isStaff &&
+        {/* ── 오늘의 미션 스트립 (홈: 오늘 상태 + 제출 카운트다운) ── */}
+        {!isStaff && view === "home" &&
           (() => {
             const lastDay = SCHEDULE.find((d) => d.week === defaultWeek && d.isLast);
             const todayD = todayIdx >= 0 ? SCHEDULE[todayIdx] : null;
@@ -1136,7 +1201,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
             );
           })()}
 
-        {/* ── Road to INITIAN: 500점 누적 게이지 + 할 일 진행률 ── */}
+        {/* ── Road to INITIAN (홈): 500점 누적 게이지 + 할 일 진행률 ── */}
+        {view === "home" && (
         <div style={card()}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10, flexWrap: "wrap", gap: 4 }}>
             <span style={{ fontSize: 15, fontWeight: 800 }}>Road to INITIAN</span>
@@ -1194,8 +1260,10 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           </div>
         </div>
 
-        {/* ── 교육 평가: 자동 점수는 실시간, 담당자 점수는 평가 후 합산 ── */}
-        {!isStaff && (
+        )}
+
+        {/* ── 내 평가 탭: 점수 상세 (자동 점수는 실시간, 담당자 점수는 평가 후 합산) ── */}
+        {view === "score" && (
           <div style={card(12)}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
               <span style={{ fontSize: 15, fontWeight: 700 }}>📋 내 점수</span>
@@ -1294,6 +1362,22 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           </div>
         )}
 
+        {/* ══════════ 교육안내 탭: 목적 → 룰 → 평가방법 → 커리큘럼 ══════════ */}
+        {view === "guide" && (
+          <>
+        {/* 교육 목적 */}
+        <div style={card(12)}>
+          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 8 }}>🎯 교육 목적</div>
+          <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.75 }}>
+            4주 뒤, <b style={{ color: T.text }}>엘리오 표준 보고서를 스스로 만들 수 있는 INITIAN</b>이 되는 것.
+            <br />
+            PPT 쉐도잉 → AI 전환 → 심화 → 테스트로 이어지는 실전 장표 역량, 병원 경영 프로젝트의 기본 지식,
+            그리고 관점을 만드는 독서 — 세 축으로 훈련합니다.
+            <br />
+            이 대시보드에서 매일 목표를 세우고 실행을 기록하면, 점수(500점)와 담당자 피드백으로 성장이 보입니다.
+          </div>
+        </div>
+
         {/* ── GROUND RULES ── */}
         <div style={card(12)}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
@@ -1368,44 +1452,63 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           </div>
         </div>
 
-        {/* ── 뷰 전환 (알약형 세그먼트 컨트롤) ── */}
-        <div style={{ display: "flex", gap: 2, margin: "20px 0 16px", background: theme === "dark" ? T.card : T.cardSoft, borderRadius: 899, padding: 3 }}>
-          {[
-            { id: "calendar", label: "📅 달력" },
-            { id: "week", label: "✅ 주차별" },
-            { id: "all", label: "👥 전체 현황" },
-            ...(isStaff ? [{ id: "review", label: "📝 평가" }] : []),
-            ...(isAdmin ? [{ id: "settings", label: "⚙ 관리" }] : []),
-          ].map((v) => {
-            const active = view === v.id;
-            return (
-              <button
-                key={v.id}
-                onClick={() => setView(v.id)}
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  padding: "10px 0",
-                  borderRadius: 899,
-                  border: "none",
-                  cursor: "pointer",
-                  fontFamily: FONT,
-                  fontSize: 14,
-                  fontWeight: 700,
-                  background: active ? (theme === "dark" ? T.cardSoft : T.card) : "transparent",
-                  color: active ? T.text : T.sub,
-                  boxShadow: active && theme !== "dark" ? "0 1px 3px rgba(23,25,28,0.12)" : "none",
-                  transition: "background .15s, color .15s",
-                }}
-              >
-                {v.label}
-              </button>
-            );
-          })}
+        {/* 커리큘럼 */}
+        <div style={card(12)}>
+          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>📚 커리큘럼</div>
+          {wkList.map((w, i) => (
+            <div key={w.no} style={{ padding: "10px 0", borderBottom: i === wkList.length - 1 ? "none" : `1px solid ${T.line}` }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T[WEEK_COLOR[w.no]] }}>
+                {w.no}주차 <span style={{ color: T.sub, fontWeight: 600 }}>· {w.range}</span>
+              </div>
+              <div style={{ fontSize: 13, color: T.sub, marginTop: 4, lineHeight: 1.6 }}>
+                PPT {w.ppt} · 프로젝트 {w.project} · 도서 『{w.book}』
+              </div>
+            </div>
+          ))}
+          <div style={{ marginTop: 10, padding: "9px 12px", borderRadius: 8, background: T.redSoft, color: T.red, fontSize: 12.5, fontWeight: 600, lineHeight: 1.5 }}>
+            추석 연휴 9/24(목)~9/26(토) 휴무 — 4주차는 10/1(목)까지 진행
+          </div>
         </div>
+          </>
+        )}
 
-        {/* ══════════ 달력 뷰 ══════════ */}
-        {view === "calendar" && (
+        {/* ── 목표관리 탭 내부 전환: 달력 ↔ 주차별 ── */}
+        {view === "plan" && (
+          <div style={{ display: "flex", gap: 2, margin: "4px 0 16px", background: theme === "dark" ? T.card : T.cardSoft, borderRadius: 999, padding: 3 }}>
+            {[
+              { id: "calendar", label: "📅 달력" },
+              { id: "week", label: "✅ 주차별 목표" },
+            ].map((v) => {
+              const active = planMode === v.id;
+              return (
+                <button
+                  key={v.id}
+                  onClick={() => setPlanMode(v.id)}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    padding: "10px 0",
+                    borderRadius: 999,
+                    border: "none",
+                    cursor: "pointer",
+                    fontFamily: FONT,
+                    fontSize: 14,
+                    fontWeight: 700,
+                    background: active ? (theme === "dark" ? T.cardSoft : T.card) : "transparent",
+                    color: active ? T.text : T.sub,
+                    boxShadow: active && theme !== "dark" ? "0 1px 3px rgba(23,25,28,0.12)" : "none",
+                    transition: "background .15s, color .15s",
+                  }}
+                >
+                  {v.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ══════════ 달력 뷰 (목표관리) ══════════ */}
+        {view === "plan" && planMode === "calendar" && (
           <>
             <div style={card()}>
               <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>2026년 9월 ~ 10월 초</div>
@@ -1516,8 +1619,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           </>
         )}
 
-        {/* ══════════ 주차별 체크 뷰 ══════════ */}
-        {view === "week" && (
+        {/* ══════════ 주차별 목표 뷰 (목표관리) ══════════ */}
+        {view === "plan" && planMode === "week" && (
           <>
             {/* 주차 탭 */}
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
@@ -1629,15 +1732,24 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               )}
             </div>
 
-            {/* 일별 카드 */}
-            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-              {curDays.map((d) => {
+          </>
+        )}
+
+        {/* ══════════ 일별 카드 (주차별 목표 + 홈의 오늘) ══════════ */}
+        {(view === "home" || (view === "plan" && planMode === "week")) && (
+          <>
+            {view === "home" && (
+              <div style={{ fontSize: 15, fontWeight: 800, margin: "16px 4px 0" }}>📌 오늘의 할 일</div>
+            )}
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+              {(view === "home" ? [homeDay] : curDays).map((d) => {
                 const f = fmtDate(d.date);
                 const isToday = d.date === today;
                 const { done, total, complete } = dayDoneMap[d.key];
                 const open = openDay === d.key;
                 const dayLogs = logs[d.key] || [];
                 const wc = T[WEEK_COLOR[d.week]];
+                const wkObj = wkList.find((w) => w.no === d.week);
                 const dayPlanStr = AREA_IDS.filter((a) => ((targets["w" + d.week] || {})[a] || 0) > 0)
                   .map((a) => {
                     const dp = sumTargets(goals, [d], a);
@@ -1712,8 +1824,6 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                             const k = `${d.key}:${t.id}`;
                             const on = !!checks[k];
                             const isSubmit = t.cat === "제출";
-                            const m = isSubmit ? submissions[k] : null;
-                            const busy = uploadingKey === k;
                             return (
                               <div key={t.id} style={{ marginBottom: 6, borderRadius: 8, background: T.cardSoft }}>
                                 <button
@@ -1746,7 +1856,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                                       flex: 1,
                                     }}
                                   >
-                                    {taskLabel(t, curWeek)}
+                                    {taskLabel(t, wkObj)}
                                   </span>
                                   {t.time && (
                                     <span style={{ fontSize: 12, fontWeight: 800, color: cs.fg, flexShrink: 0, whiteSpace: "nowrap" }}>
@@ -1755,52 +1865,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                                   )}
                                 </button>
                                 {isSubmit && (
-                                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "0 12px 10px 44px" }}>
-                                    {busy ? (
-                                      <span style={{ fontSize: 12.5, fontWeight: 700, color: T.blue }}>⏫ 업로드 중…</span>
-                                    ) : m ? (
-                                      <>
-                                        <span style={{ fontSize: 12.5, fontWeight: 600, color: T.sub, flex: 1, minWidth: 120, overflowWrap: "anywhere", lineHeight: 1.5 }}>
-                                          📄 {m.fileName} ({fmtSize(m.size)})
-                                        </span>
-                                        {m.at && (
-                                          <span style={{ fontSize: 11.5, fontWeight: 800, flexShrink: 0, color: submitBonus(d.week, m.at).pts > 0 ? T.green : T.red }}>
-                                            {submitBonus(d.week, m.at).label}
-                                          </span>
-                                        )}
-                                        <a
-                                          href={m.url}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          style={{ fontSize: 12, fontWeight: 700, color: T.blue, textDecoration: "underline", textUnderlineOffset: 2, flexShrink: 0 }}
-                                        >
-                                          다운로드
-                                        </a>
-                                        <button
-                                          onClick={() => deleteSubmission(d.key, t.id)}
-                                          style={{ border: "none", background: "transparent", color: T.faint, cursor: "pointer", fontSize: 12, fontWeight: 700, padding: "2px 3px", textDecoration: "underline", textUnderlineOffset: 2, flexShrink: 0 }}
-                                        >
-                                          삭제
-                                        </button>
-                                      </>
-                                    ) : (
-                                      <label
-                                        style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 700, color: cs.fg, background: T.card, border: `1px solid ${T.line}`, borderRadius: 999, padding: "5px 12px", cursor: "pointer" }}
-                                      >
-                                        📎 첨부하기 (HWP·Word·PPT·PDF)
-                                        <input
-                                          type="file"
-                                          accept=".hwp,.hwpx,.doc,.docx,.ppt,.pptx,.pdf"
-                                          style={{ display: "none" }}
-                                          onChange={(e) => {
-                                            const f = e.target.files[0];
-                                            if (f) uploadSubmission(d.key, t.id, f);
-                                            e.target.value = "";
-                                          }}
-                                        />
-                                      </label>
-                                    )}
-                                  </div>
+                                  <div style={{ padding: "0 12px 10px 44px" }}>{renderAttach(d.key, d.week, t)}</div>
                                 )}
                               </div>
                             );
@@ -1855,7 +1920,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                                     minWidth: 0,
                                   }}
                                 >
-                                  {taskLabel(t, curWeek)}
+                                  {taskLabel(t, wkObj)}
                                 </span>
                                 <button
                                   onClick={() => setAddGoalFor(addGoalFor === addKey ? null : addKey)}
@@ -1925,6 +1990,63 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           </>
         )}
 
+        {/* ── 홈: 이번 주 제출함 ── */}
+        {view === "home" &&
+          (() => {
+            const lastDay = SCHEDULE.find((dd) => dd.week === defaultWeek && dd.isLast);
+            const wkObj = wkList.find((w) => w.no === defaultWeek);
+            const lf = fmtDate(lastDay.date);
+            const items = [
+              { id: "report-ppt", label: "PPT 과제 작성본" },
+              { id: "report-book", label: `책 서평 『${wkObj.book}』` },
+            ];
+            return (
+              <div style={card(12)}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6, flexWrap: "wrap", gap: 4 }}>
+                  <span style={{ fontSize: 15, fontWeight: 800 }}>📎 이번 주 제출함</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: T.orange }}>
+                    마감 {lf.m}/{lf.day}({lf.dow}) 오전 10시
+                  </span>
+                </div>
+                {items.map((it, i) => (
+                  <div key={it.id} style={{ padding: "8px 0", borderBottom: i === items.length - 1 ? "none" : `1px solid ${T.line}` }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 6 }}>{it.label}</div>
+                    {renderAttach(lastDay.key, defaultWeek, { id: it.id, cat: "제출" })}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+        {/* ── 홈: 담당자 최근 코멘트 ── */}
+        {view === "home" &&
+          (() => {
+            const entries = ["w1", "w2", "w3", "w4", "final"]
+              .map((k) => ({ k, r: reviews[k] }))
+              .filter((x) => x.r && x.r.comment);
+            if (!entries.length) return null;
+            entries.sort((a, b) => (b.r.at || 0) - (a.r.at || 0));
+            const top = entries[0];
+            const label = top.k === "final" ? "종합" : top.k.replace("w", "") + "주차";
+            return (
+              <div style={card(12)}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                  <span style={{ fontSize: 15, fontWeight: 800 }}>💬 담당자 코멘트</span>
+                  <button
+                    onClick={() => setView("score")}
+                    style={{ border: "none", background: "transparent", color: T.blue, cursor: "pointer", fontFamily: FONT, fontSize: 12.5, fontWeight: 700, textDecoration: "underline", textUnderlineOffset: 2 }}
+                  >
+                    내 평가 전체 보기
+                  </button>
+                </div>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: T.sub, marginBottom: 4 }}>
+                  {label} · {top.r.by}
+                </div>
+                <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.6 }}>{top.r.comment}</div>
+              </div>
+            );
+          })()}
+
         {/* ══════════ 전체 현황 뷰 ══════════ */}
         {view === "all" && <AllView T={T} />}
 
@@ -1948,6 +2070,65 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           제출물(PPT 작성본·책 서평): 매주 마지막 날 오전 10시까지 · TEST: 매주 마지막 날 오후 4시
         </div>
       </div>
+
+      {/* ── 하단 고정 네비게이션 (알약 바) ── */}
+      <nav
+        style={{
+          position: "fixed",
+          left: 12,
+          right: 12,
+          bottom: 12,
+          maxWidth: 696,
+          margin: "0 auto",
+          display: "flex",
+          background: T.card,
+          border: `1px solid ${T.line}`,
+          borderRadius: 26,
+          padding: "7px 6px",
+          boxShadow: "0 6px 22px -6px rgba(23,25,28,.18), 0 1px 3px rgba(23,25,28,.06)",
+          zIndex: 50,
+        }}
+      >
+        {(isStaff
+          ? [
+              { id: "all", icon: "👥", label: "현황" },
+              { id: "review", icon: "📝", label: "평가" },
+              ...(isAdmin ? [{ id: "settings", icon: "⚙️", label: "관리" }] : []),
+              { id: "guide", icon: "📖", label: "안내" },
+            ]
+          : [
+              { id: "home", icon: "🏠", label: "홈" },
+              { id: "guide", icon: "📖", label: "교육안내" },
+              { id: "plan", icon: "🎯", label: "목표관리" },
+              { id: "score", icon: "📊", label: "내 평가" },
+            ]
+        ).map((it) => {
+          const active = view === it.id;
+          return (
+            <button
+              key={it.id}
+              onClick={() => setView(it.id)}
+              style={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 2,
+                padding: "5px 2px",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                fontFamily: FONT,
+                color: active ? T.orange : T.sub,
+                transition: "color .15s",
+              }}
+            >
+              <span style={{ fontSize: 17, lineHeight: 1 }}>{it.icon}</span>
+              <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: "-0.01em" }}>{it.label}</span>
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }
