@@ -804,6 +804,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   const [logs, setLogs] = useState({});
   const [goals, setGoals] = useState({});
   const [openDay, setOpenDay] = useState(todayIdx >= 0 ? SCHEDULE[todayIdx].key : null);
+  const [openScoreWeek, setOpenScoreWeek] = useState(null); // 홈 내 점수 카드의 주차 드롭다운
   const [addGoalFor, setAddGoalFor] = useState(null); // "dayKey:areaId"
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState("idle");
@@ -1271,21 +1272,54 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
             </div>
             {WEEKS.map((w, i) => {
               const rv = cumu.weeks[i];
+              const r = reviews["w" + w.no] || {};
+              const openW = openScoreWeek === w.no;
+              const lastDay = SCHEDULE.find((d) => d.week === w.no && d.isLast);
+              const subDetail = [
+                { id: "report-ppt", label: "PPT 작성본" },
+                { id: "report-book", label: "책 서평" },
+              ]
+                .map((it) => {
+                  const m = submissions[`${lastDay.key}:${it.id}`];
+                  if (m && m.at) return `${it.label} ${submitBonus(w.no, m.at).label}`;
+                  const nowPts = submitBonus(w.no, Date.now()).pts;
+                  return nowPts >= 0 ? `${it.label} 미제출 (지금 내면 ${nowPts > 0 ? `+${nowPts}` : "0"})` : `${it.label} 미제출 -5`;
+                })
+                .join(" · ");
               return (
-                <div key={w.no} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${T.line}`, flexWrap: "wrap" }}>
-                  <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T[WEEK_COLOR[w.no]] }}>{w.no}주차</span>
-                  {rv.entered ? (
-                    <span style={{ fontSize: 13, fontWeight: 800, color: T.green, background: T.greenSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
-                      {rv.total}점{rv.bonus !== 0 ? ` (${rv.bonus > 0 ? "🚀+" : "⚠️"}${rv.bonus})` : ""}
+                <div key={w.no} style={{ borderBottom: `1px solid ${T.line}` }}>
+                  <button
+                    onClick={() => setOpenScoreWeek(openW ? null : w.no)}
+                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "8px 0", flexWrap: "wrap", background: "transparent", border: "none", cursor: "pointer", fontFamily: FONT, textAlign: "left" }}
+                  >
+                    <span style={{ width: 44, fontSize: 13, fontWeight: 800, flexShrink: 0, color: T[WEEK_COLOR[w.no]] }}>{w.no}주차</span>
+                    {rv.entered ? (
+                      <span style={{ fontSize: 13, fontWeight: 800, color: T.green, background: T.greenSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
+                        {rv.total}점{rv.bonus !== 0 ? ` (${rv.bonus > 0 ? "🚀+" : "⚠️"}${rv.bonus})` : ""}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 13, fontWeight: 800, color: T.blue, background: T.blueSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
+                        실시간 {rv.live}점
+                      </span>
+                    )}
+                    <span style={{ fontSize: 12, color: T.faint }}>
+                      {rv.entered ? "평가 완료" : `가점 ${rv.bonus > 0 ? `+${rv.bonus}` : rv.bonus} · 평가 대기 /70`}
                     </span>
-                  ) : (
-                    <span style={{ fontSize: 13, fontWeight: 800, color: T.blue, background: T.blueSoft, borderRadius: 8, padding: "2px 9px", flexShrink: 0 }}>
-                      실시간 {rv.live}점
-                    </span>
+                    <span style={{ marginLeft: "auto", fontSize: 11, color: T.faint, flexShrink: 0, transform: openW ? "rotate(180deg)" : "none", transition: "transform .15s" }}>▾</span>
+                  </button>
+                  {openW && (
+                    <div style={{ padding: "0 0 10px 54px", fontSize: 12, color: T.sub, lineHeight: 1.9 }}>
+                      <div>
+                        <span style={{ fontWeight: 800, color: T.blue }}>자동 집계</span> — PPT 목표달성 {rv.pptAuto}/20 · 독서 목표달성 {rv.bookAuto}/10
+                      </div>
+                      <div>
+                        <span style={{ fontWeight: 800, color: T.text }}>담당자 평가{rv.entered ? "" : " (대기 — 남은 배점)"}</span> — 정확성 {r.acc != null ? r.acc : "─"}/20 · 서평 {r.essay != null ? r.essay : "─"}/10 · 책 TEST {r.bookTest != null ? r.bookTest : "─"}/10 · 보고서 TEST {r.test != null ? r.test : "─"}/30
+                      </div>
+                      <div>
+                        <span style={{ fontWeight: 800, color: rv.bonus >= 0 ? T.orange : T.red }}>제출 가점 {rv.bonus > 0 ? `+${rv.bonus}` : rv.bonus}</span> — {subDetail}
+                      </div>
+                    </div>
                   )}
-                  <span style={{ fontSize: 12, color: T.faint }}>
-                    {rv.entered ? "평가 완료" : `가점 ${rv.bonus > 0 ? `+${rv.bonus}` : rv.bonus} · 평가 대기 /70`}
-                  </span>
                 </div>
               );
             })}
@@ -1320,6 +1354,18 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                   </div>
                 );
               })}
+              {(() => {
+                const fs = cumu.ft.entered ? cumu.ft.score : 0;
+                return (
+                  <div style={{ flex: 1, textAlign: "center" }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: T.orange, marginBottom: 3 }}>{fs}/100</div>
+                    <div style={{ height: 96, borderRadius: 6, background: T.cardSoft, display: "flex", alignItems: "flex-end", overflow: "hidden" }}>
+                      <div style={{ width: "100%", height: `${Math.min(100, Math.max(2, fs))}%`, background: T.orange, opacity: cumu.ft.entered ? 1 : 0.45, borderRadius: 4 }} />
+                    </div>
+                    <div style={{ fontSize: 10.5, color: T.faint, marginTop: 3 }}>FINAL</div>
+                  </div>
+                );
+              })()}
             </div>
             <button
               onClick={() => setView("score")}
@@ -1421,6 +1467,18 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                         </div>
                       );
                     })}
+                    {(() => {
+                      const fs = cumu.ft.entered ? cumu.ft.score : 0;
+                      return (
+                        <div style={{ flex: 1, textAlign: "center" }}>
+                          <div style={{ fontSize: 12, fontWeight: 800, color: T.orange, marginBottom: 3 }}>{fs}/100</div>
+                          <div style={{ height: 96, borderRadius: 6, background: T.cardSoft, display: "flex", alignItems: "flex-end", overflow: "hidden" }}>
+                            <div style={{ width: "100%", height: `${Math.min(100, Math.max(2, fs))}%`, background: T.orange, opacity: cumu.ft.entered ? 1 : 0.45, borderRadius: 4 }} />
+                          </div>
+                          <div style={{ fontSize: 10.5, color: T.faint, marginTop: 3 }}>FINAL</div>
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div style={{ fontSize: 11, color: T.faint, textAlign: "center", marginTop: 6 }}>
                     막대 전체 = 100점 만점 · 흐린 채움 = 실시간 자동 점수 · 진한 채움 = 평가 완료
