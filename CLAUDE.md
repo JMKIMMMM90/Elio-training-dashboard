@@ -63,8 +63,9 @@ git add → commit → push. 별도 배포 명령 없음.
   - localStorage는 이름(training-dashboard-2026-name)·테마(-theme)만 기기별 저장.
     예전 키(training-dashboard-2026)의 기록은 최초 접속 시 온라인으로 1회 자동 이전.
 - 로그인(Firebase Authentication, 개인별 계정): 첫 진입 시 아이디+비밀번호 —
-  아이디는 영문(예: mjh)만 입력하면 코드가 `<아이디>@elio-training.app`(가상 도메인,
-  실존 메일함 불필요)으로 완성해 signIn. 계정 생성·비번 리셋은 Firebase 콘솔에서 관리자가.
+  아이디 = 회사 메일. @ 없이 입력하면 AUTH_SUFFIX("@elio.co.kr")가 자동으로 붙는다
+  (도메인이 다르면 이 상수만 수정). 계정 생성은 Firebase 콘솔에서 관리자가, 비밀번호
+  재설정은 로그인 화면 "비밀번호를 잊었어요"로 본인 메일에서 셀프 처리 가능.
   세션은 기기에 유지(재입력 불필요), 첫 화면(역할 선택)에 🔒 로그아웃 링크.
   로그인은 접근 게이트만 담당 — 이름 선택·권한은 기존 신뢰 기반 그대로(계정↔이름 연결은
   IT 이관 때). 보안 규칙(RTDB·Storage)을 `auth != null`로 잠가야 완성 — 잠그기 전에는

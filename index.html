@@ -38,8 +38,8 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const storage = firebase.storage(); // 제출물·학습자료 파일 저장소
-const auth = firebase.auth(); // 개인별 로그인 (아이디 = <영문아이디>@elio-training.app)
-const AUTH_SUFFIX = "@elio-training.app"; // 아이디 뒤에 자동으로 붙는 가상 도메인 (실존 메일함 불필요)
+const auth = firebase.auth(); // 개인별 로그인 (아이디 = 회사 메일 주소)
+const AUTH_SUFFIX = "@elio.co.kr"; // @ 없이 입력하면 자동으로 붙는 회사 메일 도메인
 
 const { useState, useEffect, useMemo } = React;
 
@@ -522,14 +522,14 @@ function LoginGate({ T }) {
         <div style={{ fontSize: 13, color: T.orange, fontWeight: 700, letterSpacing: "0.01em", marginBottom: 8 }}>Elio INITIAN Training Program</div>
         <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 8, lineHeight: 1.35 }}>🔒 로그인</div>
         <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.6, marginBottom: 18 }}>
-          담당자에게 받은 아이디와 비밀번호를 입력하세요.
+          회사 메일 아이디(@ 앞부분)와 비밀번호를 입력하세요.
           <br />
           이 기기에서 한 번만 입력하면 다음부터는 바로 열려요.
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <input
             style={inputStyle}
-            placeholder="아이디 (예: mjh)"
+            placeholder={`메일 아이디 (예: hong → hong${AUTH_SUFFIX})`}
             value={id}
             autoCapitalize="none"
             onChange={(e) => setId(e.target.value)}
@@ -550,6 +550,25 @@ function LoginGate({ T }) {
             style={{ fontFamily: FONT, fontSize: 15, fontWeight: 800, border: "none", borderRadius: 8, padding: "13px 0", background: T.blue, color: "#fff", cursor: busy ? "wait" : "pointer", opacity: busy ? 0.7 : 1 }}
           >
             {busy ? "확인 중…" : "로그인"}
+          </button>
+          <button
+            onClick={async () => {
+              const rawId = id.trim().toLowerCase();
+              if (!rawId) {
+                setErr("먼저 위에 메일 아이디를 입력해 주세요.");
+                return;
+              }
+              const email = rawId.includes("@") ? rawId : rawId + AUTH_SUFFIX;
+              try {
+                await auth.sendPasswordResetEmail(email);
+                alert(`${email} 메일함으로 비밀번호 재설정 메일을 보냈어요.`);
+              } catch (e) {
+                alert("메일을 보내지 못했어요. 아이디를 확인하거나 담당자에게 문의해 주세요.");
+              }
+            }}
+            style={{ border: "none", background: "transparent", color: T.faint, cursor: "pointer", fontFamily: FONT, fontSize: 12.5, fontWeight: 700, textDecoration: "underline", textUnderlineOffset: 2, padding: "2px 0" }}
+          >
+            비밀번호를 잊었어요
           </button>
         </div>
       </div>
