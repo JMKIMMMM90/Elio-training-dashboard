@@ -947,22 +947,27 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   const [reviews, setReviews] = useState({});
   const [submissions, setSubmissions] = useState({});
   const [uploadingKey, setUploadingKey] = useState(null);
-  const [matUploading, setMatUploading] = useState(null); // 학습자료 업로드 중인 주차 번호
+  const [matUploading, setMatUploading] = useState(null); // 학습자료 업로드 진행: {week, done, total}
+  const [matDragWeek, setMatDragWeek] = useState(null); // 파일을 끌어다 놓는 중인 주차 번호
 
-  // ── 학습자료 (커리큘럼): 담당자가 올리면 전원에게 실시간 공유 ──
-  const uploadMaterial = async (weekNo, file) => {
-    if (file.size > 100 * 1024 * 1024) {
-      alert("100MB 이하 파일만 올릴 수 있어요.");
-      return;
-    }
-    setMatUploading(weekNo);
-    try {
-      const path = `materials/w${weekNo}/${Date.now()}_${file.name}`;
-      const snap = await storage.ref(path).put(file);
-      const url = await snap.ref.getDownloadURL();
-      await db.ref(`config/materials/w${weekNo}`).push({ fileName: file.name, size: file.size, path, url, at: Date.now(), by: name });
-    } catch (e) {
-      alert("업로드에 실패했어요. 인터넷 연결을 확인해 주세요.");
+  // ── 학습자료 (커리큘럼): 담당자가 올리면 전원에게 실시간 공유. 여러 파일 한꺼번에 가능 ──
+  const uploadMaterials = async (weekNo, fileList) => {
+    const files = Array.from(fileList || []);
+    if (!files.length || matUploading) return;
+    const ok = files.filter((f) => f.size <= 100 * 1024 * 1024);
+    if (ok.length < files.length) alert("100MB가 넘는 파일은 건너뛰어요.");
+    if (!ok.length) return;
+    for (let i = 0; i < ok.length; i++) {
+      setMatUploading({ week: weekNo, done: i, total: ok.length });
+      const file = ok[i];
+      try {
+        const path = `materials/w${weekNo}/${Date.now()}_${file.name}`;
+        const snap = await storage.ref(path).put(file);
+        const url = await snap.ref.getDownloadURL();
+        await db.ref(`config/materials/w${weekNo}`).push({ fileName: file.name, size: file.size, path, url, at: Date.now(), by: name });
+      } catch (e) {
+        alert(`'${file.name}' 업로드에 실패했어요. 인터넷 연결을 확인해 주세요.`);
+      }
     }
     setMatUploading(null);
   };
@@ -1817,8 +1822,22 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                 const mats = (cfg.materials || {})["w" + w.no] || {};
                 const entries = Object.entries(mats).sort((a, b) => (a[1].at || 0) - (b[1].at || 0));
                 if (!entries.length && !isStaff) return null;
+                const dragOn = matDragWeek === w.no;
+                const busy = matUploading && matUploading.week === w.no;
                 return (
-                  <div style={{ marginTop: 8, background: T.cardSoft, borderRadius: 8, padding: "10px 12px" }}>
+                  <div
+                    onDragOver={isStaff ? (e) => { e.preventDefault(); setMatDragWeek(w.no); } : undefined}
+                    onDragLeave={isStaff ? (e) => { if (!e.currentTarget.contains(e.relatedTarget)) setMatDragWeek(null); } : undefined}
+                    onDrop={isStaff ? (e) => { e.preventDefault(); setMatDragWeek(null); uploadMaterials(w.no, e.dataTransfer.files); } : undefined}
+                    style={{
+                      marginTop: 8,
+                      background: dragOn ? T.blueSoft : T.cardSoft,
+                      borderRadius: 8,
+                      padding: "10px 12px",
+                      border: dragOn ? `1.5px dashed ${T.blue}` : "1.5px dashed transparent",
+                      transition: "background .15s, border-color .15s",
+                    }}
+                  >
                     <div style={{ fontSize: 13, fontWeight: 800, color: T.sub, marginBottom: 6 }}>📥 학습자료</div>
                     {entries.map(([k, m]) => (
                       <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0" }}>
@@ -1845,21 +1864,26 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                       <div style={{ fontSize: 12.5, color: T.faint, marginBottom: 6 }}>아직 올린 자료가 없어요.</div>
                     )}
                     {isStaff && (
-                      <label
-                        style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 4, border: `1.5px dashed ${T.inputBorder}`, borderRadius: 8, padding: "7px 12px", cursor: matUploading === w.no ? "wait" : "pointer", fontSize: 13, fontWeight: 700, color: T.blue }}
-                      >
-                        {matUploading === w.no ? "업로드 중…" : "📤 자료 올리기"}
-                        <input
-                          type="file"
-                          style={{ display: "none" }}
-                          disabled={matUploading === w.no}
-                          onChange={(e) => {
-                            const f = e.target.files && e.target.files[0];
-                            e.target.value = "";
-                            if (f) uploadMaterial(w.no, f);
-                          }}
-                        />
-                      </label>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
+                        <label
+                          style={{ display: "inline-flex", alignItems: "center", gap: 6, border: `1.5px dashed ${T.inputBorder}`, borderRadius: 8, padding: "7px 12px", cursor: busy ? "wait" : "pointer", fontSize: 13, fontWeight: 700, color: T.blue }}
+                        >
+                          {busy ? `업로드 중… ${matUploading.done + 1}/${matUploading.total}` : "📤 자료 올리기 (여러 개 선택 가능)"}
+                          <input
+                            type="file"
+                            multiple
+                            style={{ display: "none" }}
+                            disabled={!!busy}
+                            onChange={(e) => {
+                              const fs = e.target.files;
+                              const picked = fs && fs.length ? Array.from(fs) : [];
+                              e.target.value = "";
+                              if (picked.length) uploadMaterials(w.no, picked);
+                            }}
+                          />
+                        </label>
+                        <span style={{ fontSize: 12.5, color: T.faint }}>또는 파일을 이 박스로 끌어다 놓으세요</span>
+                      </div>
                     )}
                   </div>
                 );
