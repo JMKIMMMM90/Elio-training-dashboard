@@ -29,8 +29,11 @@ git add → commit → push. 별도 배포 명령 없음.
     weeks/w<주차>/{ppt,project,book}=과제명 덮어쓰기(없으면 코드 기본값, mergeWeeks),
     staff/<이름>=true 담당자 명단.
   - 권한 2단계: ADMIN_NAMES 상수(김재민) = "⚙ 관리" 탭(총량·과제명·담당자 명단·신입별
-    담당자 지정) + 평가. config/staff에 등록된 담당자 = "📝 평가" 탭. 로그인이 없으므로
-    편의상 숨김이지 보안 아님. 관리자·담당자는 전체 현황 목록에서 제외.
+    담당자 지정) + 평가. config/staff에 등록된 담당자 = "📝 평가" 탭. 역할 구분은 앱 안
+    편의상 숨김(로그인한 사람끼리는 신뢰 기반). 관리자·담당자는 전체 현황 목록에서 제외.
+  - ★보안 규칙 잠금 완료(2026-09-08): RTDB·Storage 모두 `auth != null` — 로그인 없이는
+    읽기·쓰기·파일 접근 전부 불가(curl 검증됨). 규칙을 되돌리지 말 것. 이 때문에 REST로
+    직접 데이터를 읽고 쓰는 검증·시딩은 더 이상 불가 — 실화면 검증은 대표님 로그인 협업으로.
   - 평가는 500점제: 주차 100점 × 4 + FINAL PPT TEST 100점. 제출 가점은 만점 외 별도 —
     파일(PPT 작성본·서평)별 ±5를 각각 받아 합산(주당 -10~+10, weekBonus). 워딩은 "가점"으로
     통일(보너스 금지). 누적은 calcCumulative(평가 전 주차는 실시간 자동점수로 합산).
@@ -52,7 +55,7 @@ git add → commit → push. 별도 배포 명령 없음.
     (홈 히어로 게이지 + 내 평가 주차 행·추이 바 + 제출함 세그먼트의 가점 카운트다운).
   - 평가 기준 카드: 신입 화면 GROUND RULES 아래 상시 공개(배점표 + 가점 사다리).
   - users/<신입>/mentor = 담당자명.
-  - 제출물 첨부: Firebase Storage(Blaze, 버킷 US-EAST1 무료 위치, 규칙 공개) 사용.
+  - 제출물 첨부: Firebase Storage(Blaze, 버킷 US-EAST1 무료 위치, 규칙 auth != null) 사용.
     파일은 storage의 submissions/<이름>/<dayKey:taskId>/에, 메타데이터는
     users/<이름>/submissions/<dayKey:taskId> = {fileName, size, path, url, at}에 저장.
     첨부 시 해당 제출 항목 자동 체크, 재첨부는 교체, 100MB 제한. 평가 탭에서
