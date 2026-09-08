@@ -396,10 +396,12 @@ const REVIEW_ITEMS = [
 ];
 
 // 주차 점수 계산(100점 만점, 제출 가점은 별도 합산): 자동(PPT달성 20 + 독서달성 10) + 담당자 4항목
-// 독서 달성률은 제출 중심: 책 서평을 제출하면 10점 만점 인정, 제출 전에는 일별 독서 목표로 계산
+// 달성률은 둘 다 제출 중심: 해당 제출물을 내면 만점 인정, 제출 전에는 일별 목표 달성률로 실시간 계산.
+// 일별 목표는 점수가 아니라 자기관리·육안 확인용 (빨리 끝내고 일찍 내면 만점+가점).
 function calcWeekReview(r, checks, goals, submissions, targets, weekNo) {
-  const pptAuto = Math.round(weekAreaRate(checks, goals, targets, weekNo, "ppt") * 20 * 10) / 10;
   const lastDay = SCHEDULE.find((d) => d.week === weekNo && d.isLast);
+  const pptSubmitted = !!(((submissions || {})[`${lastDay.key}:report-ppt`] || {}).at);
+  const pptAuto = pptSubmitted ? 20 : Math.round(weekAreaRate(checks, goals, targets, weekNo, "ppt") * 20 * 10) / 10;
   const bookSubmitted = !!(((submissions || {})[`${lastDay.key}:report-book`] || {}).at);
   const bookAuto = bookSubmitted ? 10 : Math.round(weekAreaRate(checks, goals, targets, weekNo, "book") * 10 * 10) / 10;
   const bonus = weekBonus(submissions, weekNo);
@@ -1524,7 +1526,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                             <div style={{ ...sec, color: T.blue }}>
                               📊 PPT <span style={{ color: T.faint, fontWeight: 700 }}>소계 {pptSum}/40{bonusTag(pptSub)}</span>
                             </div>
-                            {bar("장표 목표 달성 (자동)", rv.pptAuto, 20, T.blue)}
+                            {bar("장표 목표 달성 (제출 시 만점)", rv.pptAuto, 20, T.blue)}
                             {bar("정확성 (담당자)", r.acc != null ? r.acc : null, 20, T.blue)}
                             {subLine(pptSub)}
                           </div>
@@ -1533,7 +1535,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                               📚 서평 <span style={{ color: T.faint, fontWeight: 700 }}>소계 {bookSum}/30{bonusTag(bookSub)}</span>
                             </div>
                             {bar("서평 평가 (담당자)", r.essay != null ? r.essay : null, 10, T.purple)}
-                            {bar("독서 목표 달성 (자동)", rv.bookAuto, 10, T.purple)}
+                            {bar("독서 목표 달성 (제출 시 만점)", rv.bookAuto, 10, T.purple)}
                             {bar("책 TEST (담당자)", r.bookTest != null ? r.bookTest : null, 10, T.purple)}
                             {subLine(bookSub)}
                           </div>
@@ -1709,8 +1711,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
 
           <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>주차 100점은 이렇게 나뉩니다</div>
           {[
-            { icon: "📊", name: "PPT", pts: 40, color: "blue", goal: "표준 장표를 짧은 시간 안에 정확하게 완성하는 실전 제작력을 기릅니다.", detail: "달성률 20 (자동 집계) + 정확성 20 (담당자 평가)" },
-            { icon: "📚", name: "책 서평", pts: 30, color: "purple", goal: "병원 경영을 보는 자기만의 관점과 논리를 만듭니다.", detail: "서평 10 + 달성률 10 (자동 집계) + 책 TEST 10" },
+            { icon: "📊", name: "PPT", pts: 40, color: "blue", goal: "표준 장표를 짧은 시간 안에 정확하게 완성하는 실전 제작력을 기릅니다.", detail: "달성률 20 (작성본 제출 시 만점) + 정확성 20 (담당자 평가)" },
+            { icon: "📚", name: "책 서평", pts: 30, color: "purple", goal: "병원 경영을 보는 자기만의 관점과 논리를 만듭니다.", detail: "서평 10 + 달성률 10 (서평 제출 시 만점) + 책 TEST 10" },
             { icon: "📋", name: "프로젝트 보고서", pts: 30, color: "w2", goal: "실제 프로젝트의 핵심 지식을 익힙니다.", detail: "지식 TEST 30" },
           ].map((c) => (
             <div key={c.name} style={{ background: T[c.color + "Soft"], borderRadius: 8, padding: "14px 16px", marginBottom: 8 }}>
