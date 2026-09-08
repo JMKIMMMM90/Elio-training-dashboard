@@ -10,6 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { background: #f5f6f8; font-variant-numeric: tabular-nums; }
@@ -36,7 +37,9 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
-const storage = firebase.storage(); // 제출물 파일 저장소
+const storage = firebase.storage(); // 제출물·학습자료 파일 저장소
+const auth = firebase.auth(); // 개인별 로그인 (아이디 = <영문아이디>@elio-training.app)
+const AUTH_SUFFIX = "@elio-training.app"; // 아이디 뒤에 자동으로 붙는 가상 도메인 (실존 메일함 불필요)
 
 const { useState, useEffect, useMemo } = React;
 
@@ -440,9 +443,13 @@ function currentWeekNo(today) {
 function App() {
   // 접속할 때마다 항상 첫 화면(역할·이름 선택)부터 시작한다
   const [name, setName] = useState(null);
+  const [authed, setAuthed] = useState(null); // null=확인 중 | false=로그인 필요 | true=로그인됨
   const [theme, setTheme] = useState(() => {
     try { return localStorage.getItem(THEME_KEY) || "light"; } catch { return "light"; }
   });
+
+  // 로그인 상태 감시 — 한 번 로그인하면 기기에 세션이 남아 매번 입력하지 않아도 된다
+  useEffect(() => auth.onAuthStateChanged((u) => setAuthed(!!u)), []);
 
   const switchTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
@@ -450,6 +457,13 @@ function App() {
     try { localStorage.setItem(THEME_KEY, next); } catch {}
   };
 
+  if (authed === null)
+    return (
+      <div style={{ fontFamily: FONT, background: THEMES[theme].bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: THEMES[theme].faint, fontSize: 14 }}>
+        접속 확인 중…
+      </div>
+    );
+  if (!authed) return <LoginGate T={THEMES[theme]} />;
   if (!name) return <NamePicker T={THEMES[theme]} onPick={setName} />;
 
   return (
@@ -459,6 +473,87 @@ function App() {
       switchTheme={switchTheme}
       onChangeName={() => setName(null)}
     />
+  );
+}
+
+// ── 로그인 화면: 개인별 아이디+비밀번호 (Firebase Authentication) ──
+function LoginGate({ T }) {
+  const [id, setId] = useState("");
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const login = async () => {
+    const rawId = id.trim().toLowerCase();
+    if (!rawId || !pw) {
+      setErr("아이디와 비밀번호를 입력해 주세요.");
+      return;
+    }
+    const email = rawId.includes("@") ? rawId : rawId + AUTH_SUFFIX;
+    setBusy(true);
+    setErr("");
+    try {
+      await auth.signInWithEmailAndPassword(email, pw);
+      // 성공하면 onAuthStateChanged가 화면을 넘겨준다
+    } catch (e) {
+      const c = (e && e.code) || "";
+      if (c === "auth/network-request-failed") setErr("인터넷 연결을 확인해 주세요.");
+      else if (c === "auth/too-many-requests") setErr("시도가 너무 많았어요. 잠시 후 다시 해주세요.");
+      else setErr("아이디 또는 비밀번호가 맞지 않아요. 담당자에게 확인해 주세요.");
+      setBusy(false);
+    }
+  };
+
+  const inputStyle = {
+    fontFamily: FONT,
+    fontSize: 15,
+    border: `1.5px solid ${T.inputBorder}`,
+    borderRadius: 8,
+    padding: "12px 14px",
+    background: T.cardSoft,
+    color: T.text,
+    outline: "none",
+    width: "100%",
+  };
+
+  return (
+    <div style={{ fontFamily: FONT, background: T.bg, minHeight: "100vh", color: T.text, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 8, padding: 28, width: "100%", maxWidth: 420 }}>
+        <div style={{ fontSize: 13, color: T.orange, fontWeight: 700, letterSpacing: "0.01em", marginBottom: 8 }}>Elio INITIAN Training Program</div>
+        <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 8, lineHeight: 1.35 }}>🔒 로그인</div>
+        <div style={{ fontSize: 13.5, color: T.sub, lineHeight: 1.6, marginBottom: 18 }}>
+          담당자에게 받은 아이디와 비밀번호를 입력하세요.
+          <br />
+          이 기기에서 한 번만 입력하면 다음부터는 바로 열려요.
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <input
+            style={inputStyle}
+            placeholder="아이디 (예: mjh)"
+            value={id}
+            autoCapitalize="none"
+            onChange={(e) => setId(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && login()}
+          />
+          <input
+            style={inputStyle}
+            type="password"
+            placeholder="비밀번호"
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && login()}
+          />
+          {err && <div style={{ fontSize: 13, fontWeight: 700, color: T.red, lineHeight: 1.5 }}>{err}</div>}
+          <button
+            onClick={login}
+            disabled={busy}
+            style={{ fontFamily: FONT, fontSize: 15, fontWeight: 800, border: "none", borderRadius: 8, padding: "13px 0", background: T.blue, color: "#fff", cursor: busy ? "wait" : "pointer", opacity: busy ? 0.7 : 1 }}
+          >
+            {busy ? "확인 중…" : "로그인"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -651,6 +746,12 @@ function NamePicker({ T, onPick }) {
             담당자 추가는 관리자가 ⚙ 관리 탭에서 등록합니다.
           </div>
         )}
+        <button
+          onClick={() => auth.signOut()}
+          style={{ display: "block", margin: "18px auto 0", border: "none", background: "transparent", color: T.faint, cursor: "pointer", fontFamily: FONT, fontSize: 12.5, fontWeight: 700, textDecoration: "underline", textUnderlineOffset: 2 }}
+        >
+          🔒 로그아웃
+        </button>
       </div>
     </div>
   );
@@ -819,6 +920,30 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   const [reviews, setReviews] = useState({});
   const [submissions, setSubmissions] = useState({});
   const [uploadingKey, setUploadingKey] = useState(null);
+  const [matUploading, setMatUploading] = useState(null); // 학습자료 업로드 중인 주차 번호
+
+  // ── 학습자료 (커리큘럼): 담당자가 올리면 전원에게 실시간 공유 ──
+  const uploadMaterial = async (weekNo, file) => {
+    if (file.size > 100 * 1024 * 1024) {
+      alert("100MB 이하 파일만 올릴 수 있어요.");
+      return;
+    }
+    setMatUploading(weekNo);
+    try {
+      const path = `materials/w${weekNo}/${Date.now()}_${file.name}`;
+      const snap = await storage.ref(path).put(file);
+      const url = await snap.ref.getDownloadURL();
+      await db.ref(`config/materials/w${weekNo}`).push({ fileName: file.name, size: file.size, path, url, at: Date.now(), by: name });
+    } catch (e) {
+      alert("업로드에 실패했어요. 인터넷 연결을 확인해 주세요.");
+    }
+    setMatUploading(null);
+  };
+  const deleteMaterial = async (weekNo, key, m) => {
+    if (!confirm(`'${m.fileName}' 자료를 삭제할까요?`)) return;
+    try { await storage.ref(m.path).delete(); } catch {}
+    db.ref(`config/materials/w${weekNo}/${key}`).remove();
+  };
   const targets = cfg.targets || {};
   const staff = cfg.staff || {};
   const wkList = useMemo(() => mergeWeeks(cfg.weeks), [cfg]);
@@ -1641,6 +1766,57 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                 <br />
                 📚 『{w.book}』
               </div>
+              {(() => {
+                const mats = (cfg.materials || {})["w" + w.no] || {};
+                const entries = Object.entries(mats).sort((a, b) => (a[1].at || 0) - (b[1].at || 0));
+                if (!entries.length && !isStaff) return null;
+                return (
+                  <div style={{ marginTop: 8, background: T.cardSoft, borderRadius: 8, padding: "10px 12px" }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: T.sub, marginBottom: 6 }}>📥 학습자료</div>
+                    {entries.map(([k, m]) => (
+                      <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0" }}>
+                        <a
+                          href={m.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ fontSize: 14, fontWeight: 700, color: T.blue, textDecoration: "underline", textUnderlineOffset: 2, overflowWrap: "anywhere", minWidth: 0 }}
+                        >
+                          📄 {m.fileName}
+                        </a>
+                        <span style={{ fontSize: 12, color: T.faint, flexShrink: 0 }}>({fmtSize(m.size)})</span>
+                        {isStaff && (
+                          <button
+                            onClick={() => deleteMaterial(w.no, k, m)}
+                            style={{ marginLeft: "auto", border: "none", background: "transparent", color: T.red, cursor: "pointer", fontFamily: FONT, fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}
+                          >
+                            삭제
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {!entries.length && (
+                      <div style={{ fontSize: 12.5, color: T.faint, marginBottom: 6 }}>아직 올린 자료가 없어요.</div>
+                    )}
+                    {isStaff && (
+                      <label
+                        style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 4, border: `1.5px dashed ${T.inputBorder}`, borderRadius: 8, padding: "7px 12px", cursor: matUploading === w.no ? "wait" : "pointer", fontSize: 13, fontWeight: 700, color: T.blue }}
+                      >
+                        {matUploading === w.no ? "업로드 중…" : "📤 자료 올리기"}
+                        <input
+                          type="file"
+                          style={{ display: "none" }}
+                          disabled={matUploading === w.no}
+                          onChange={(e) => {
+                            const f = e.target.files && e.target.files[0];
+                            e.target.value = "";
+                            if (f) uploadMaterial(w.no, f);
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           ))}
           <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 8, background: T.redSoft, color: T.red, fontSize: 13, fontWeight: 600, lineHeight: 1.5 }}>
