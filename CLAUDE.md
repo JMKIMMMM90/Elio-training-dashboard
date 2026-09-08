@@ -60,6 +60,9 @@ git add → commit → push. 별도 배포 명령 없음.
   - 총량이 설정된 영역은 주차 화면에 누적 게이지 / 계획 합계 검증(부족·일치·초과) /
     페이스 점검(오늘까지 계획 누적 vs 실제)이 표시됨. 전체 현황에도 사람별 누적·페이스 표시.
   - firebaseConfig는 index.html 상단에 있음 (프로젝트: elio-training, 소유: 대표님 구글 계정).
+  - ★Blaze의 Google Cloud 무료 체험 크레딧은 2026-12-07 만료(교육 종료 10/1 이후) —
+    이후에도 운영하려면 그 전에 콘솔에서 유료 결제 계정 업그레이드 필요(IT 이관 항목).
+    현재 사용량은 무료 한도 내라 업그레이드해도 실청구 사실상 0원.
   - localStorage는 이름(training-dashboard-2026-name)·테마(-theme)만 기기별 저장.
     예전 키(training-dashboard-2026)의 기록은 최초 접속 시 온라인으로 1회 자동 이전.
 - 로그인(Firebase Authentication, 개인별 계정): 첫 진입 시 아이디+비밀번호 —
