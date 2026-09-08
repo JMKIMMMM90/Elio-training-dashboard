@@ -449,7 +449,15 @@ function App() {
   });
 
   // 로그인 상태 감시 — 한 번 로그인하면 기기에 세션이 남아 매번 입력하지 않아도 된다
-  useEffect(() => auth.onAuthStateChanged((u) => setAuthed(!!u)), []);
+  // 로그아웃되면 이름 선택도 초기화해 다음 로그인 때 첫 화면부터 시작한다
+  useEffect(
+    () =>
+      auth.onAuthStateChanged((u) => {
+        setAuthed(!!u);
+        if (!u) setName(null);
+      }),
+    []
+  );
 
   const switchTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
@@ -1295,22 +1303,42 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
             >
               {theme === "dark" ? "☀️ 라이트" : "🌙 다크"}
             </button>
-            <button
-              onClick={onChangeName}
-              style={{
-                border: "none",
-                cursor: "pointer",
-                fontFamily: FONT,
-                fontSize: 12,
-                fontWeight: 600,
-                padding: "5px 8px",
-                borderRadius: 8,
-                background: "transparent",
-                color: T.faint,
-              }}
-            >
-              👤 이름 변경
-            </button>
+            <div style={{ display: "flex", gap: 2 }}>
+              <button
+                onClick={onChangeName}
+                style={{
+                  border: "none",
+                  cursor: "pointer",
+                  fontFamily: FONT,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  padding: "5px 8px",
+                  borderRadius: 8,
+                  background: "transparent",
+                  color: T.faint,
+                }}
+              >
+                👤 이름 변경
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm("로그아웃할까요? 다시 들어오려면 비밀번호를 입력해야 해요.")) auth.signOut();
+                }}
+                style={{
+                  border: "none",
+                  cursor: "pointer",
+                  fontFamily: FONT,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  padding: "5px 8px",
+                  borderRadius: 8,
+                  background: "transparent",
+                  color: T.faint,
+                }}
+              >
+                🔒 로그아웃
+              </button>
+            </div>
           </div>
         </div>
 
