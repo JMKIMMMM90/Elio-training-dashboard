@@ -199,6 +199,9 @@ function taskLabel(task, w) {
 // 주차 총량 자체는 Firebase config/targets에 저장되어 전원에게 실시간 반영.
 const ADMIN_NAMES = ["김재민"];
 
+// 앱 버전 — 배포(push)할 때마다 올린다. 화면 맨 아래 표시되어 "새 버전이 반영됐는지" 확인용.
+const APP_VERSION = "v10.6.3";
+
 function buildSchedule(weeks) {
   const days = [];
   weeks.forEach((w, wi) => {
@@ -2674,6 +2677,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           체크·목표·일과 기록은 온라인에 자동 저장돼요 — 어느 기기에서 접속해도 같은 기록이 보여요
           <br />
           제출물(PPT 작성본·책 서평): 매주 마지막 날 오전 10시까지 · TEST: 매주 마지막 날 오후 4시
+          <br />
+          {APP_VERSION}
         </div>
       </div>
 
