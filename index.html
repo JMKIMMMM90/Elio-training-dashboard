@@ -146,7 +146,15 @@ const WEEKS = [
   },
 ];
 
-const HOLIDAYS = { "2026-09-24": "추석 연휴", "2026-09-25": "추석", "2026-09-26": "추석 연휴" };
+// 교육 일정 생성 시 제외되는 휴무일 — 새 교육 기간이 생기면 여기에 공휴일을 추가
+const HOLIDAYS = {
+  "2026-09-24": "추석 연휴",
+  "2026-09-25": "추석",
+  "2026-09-26": "추석 연휴",
+  "2026-10-09": "한글날",
+  "2026-12-25": "성탄절",
+  "2027-01-01": "신정",
+};
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 
 // ── 교육 진행 GROUND RULES ────────────────────
@@ -165,8 +173,9 @@ const AREA_IDS = ["ppt", "proj", "book"];
 const AREA_LABEL = { ppt: "PPT", proj: "프로젝트", book: "도서" };
 
 // 주차별 과제명: config/weeks에 값이 있으면 코드 기본값을 덮어쓴다 (관리 탭에서 수정)
-function mergeWeeks(cfgWeeks) {
-  return WEEKS.map((w) => {
+// 날짜(range·dates)는 plan(사람별 일정)에서 온다.
+function mergeWeeks(plan, cfgWeeks) {
+  return plan.weeks.map((w) => {
     const o = (cfgWeeks || {})["w" + w.no] || {};
     return { ...w, ppt: o.ppt || w.ppt, project: o.project || w.project, book: o.book || w.book };
   });
@@ -191,9 +200,9 @@ function taskLabel(task, w) {
 // 주차 총량 자체는 Firebase config/targets에 저장되어 전원에게 실시간 반영.
 const ADMIN_NAMES = ["김재민"];
 
-function buildSchedule() {
+function buildSchedule(weeks) {
   const days = [];
-  WEEKS.forEach((w, wi) => {
+  weeks.forEach((w, wi) => {
     w.dates.forEach((dateStr, di) => {
       const isLast = di === w.dates.length - 1;
       const tasks = [
@@ -222,8 +231,44 @@ function buildSchedule() {
   return days;
 }
 
-const SCHEDULE = buildSchedule();
-const DAY_BY_DATE = Object.fromEntries(SCHEDULE.map((d) => [d.date, d]));
+// ── 사람별 교육 일정(plan): 시작일에서 주말·공휴일을 빼고 5일×4주를 자동 생성 ──
+// users/<이름>/training/start가 없으면 1기 기본(2026-09-02) → 기존 데이터와 완전 호환.
+const DEFAULT_START = "2026-09-02";
+
+function rangeLabel(dates) {
+  const a = fmtDate(dates[0]);
+  const b = fmtDate(dates[dates.length - 1]);
+  return `${a.m}/${a.day}(${a.dow}) ~ ${b.m}/${b.day}(${b.dow})`;
+}
+
+function makePlan(start) {
+  const all = [];
+  const d = new Date(start + "T00:00:00");
+  const p = (n) => String(n).padStart(2, "0");
+  while (all.length < 20) {
+    const ds = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6 && !HOLIDAYS[ds]) all.push(ds);
+    d.setDate(d.getDate() + 1);
+  }
+  const weeks = WEEKS.map((w, i) => {
+    const dates = all.slice(i * 5, i * 5 + 5);
+    return { ...w, dates, range: rangeLabel(dates) };
+  });
+  const schedule = buildSchedule(weeks);
+  const byDate = Object.fromEntries(schedule.map((x) => [x.date, x]));
+  const offDays = Object.keys(HOLIDAYS)
+    .filter((h) => h >= weeks[0].dates[0] && h <= weeks[3].dates[4])
+    .sort();
+  return { start, weeks, schedule, byDate, offDays };
+}
+
+const PLAN_CACHE = {};
+function planFor(start) {
+  const s = start || DEFAULT_START;
+  if (!PLAN_CACHE[s]) PLAN_CACHE[s] = makePlan(s);
+  return PLAN_CACHE[s];
+}
 
 function fmtDate(dateStr) {
   const d = new Date(dateStr + "T00:00:00");
@@ -254,12 +299,14 @@ function todayStr() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-// 달력 그리드: 2026-08-30(일) ~ 2026-10-03(토), 5행 × 7열
-function buildCalendarRows() {
+// 달력 그리드: plan의 시작 주 일요일부터 마지막 날이 포함된 주 토요일까지, 7열
+function buildCalendarRows(plan) {
   const rows = [];
-  const start = new Date("2026-08-30T00:00:00");
+  const start = new Date(plan.start + "T00:00:00");
+  start.setDate(start.getDate() - start.getDay()); // 시작 주의 일요일
+  const last = new Date(plan.weeks[3].dates[4] + "T00:00:00");
   const p = (n) => String(n).padStart(2, "0");
-  for (let r = 0; r < 5; r++) {
+  for (let r = 0; r < 10; r++) {
     const row = [];
     for (let c = 0; c < 7; c++) {
       const d = new Date(start);
@@ -268,10 +315,12 @@ function buildCalendarRows() {
       row.push({ dateStr: ds, month: d.getMonth() + 1, day: d.getDate(), dow: c });
     }
     rows.push(row);
+    const rowEnd = new Date(start);
+    rowEnd.setDate(start.getDate() + r * 7 + 6);
+    if (rowEnd >= last) break;
   }
   return rows;
 }
-const CAL_ROWS = buildCalendarRows();
 
 // 예전 기기별 저장(localStorage) 키 — 최초 접속 시 온라인으로 1회 이전용
 const STORAGE_KEY = "training-dashboard-2026";
@@ -321,15 +370,15 @@ function sumActuals(goals, days, areaId) {
 }
 
 // checks+goals로 주차별·전체 진행률 계산 (본인 화면·전체 현황 공용)
-function calcStats(checks, goals) {
+function calcStats(plan, checks, goals) {
   goals = goals || {};
   const per = {};
   let allDone = 0,
     allTotal = 0;
-  WEEKS.forEach((w) => {
+  plan.weeks.forEach((w) => {
     let done = 0,
       total = 0;
-    SCHEDULE.filter((d) => d.week === w.no).forEach((d) => {
+    plan.schedule.filter((d) => d.week === w.no).forEach((d) => {
       d.tasks.forEach((t) => {
         total++;
         done += taskScore(checks, goals, d, t);
@@ -353,8 +402,8 @@ function addDaysStr(dateStr, n) {
 }
 
 // 제출 시점 가점(사다리): 마감(마지막 날 10:00) 기준 2일 전 +5 / 전날 +3 / 정시 0 / 지각 -5
-function submitBonus(weekNo, at) {
-  const w = WEEKS.find((x) => x.no === weekNo);
+function submitBonus(plan, weekNo, at) {
+  const w = plan.weeks.find((x) => x.no === weekNo);
   const last = w.dates[w.dates.length - 1];
   const dayBefore = new Date(addDaysStr(last, -1) + "T00:00:00").getTime();
   const lastMid = new Date(last + "T00:00:00").getTime();
@@ -366,8 +415,8 @@ function submitBonus(weekNo, at) {
 }
 
 // 주차 자동 달성률(0~1): 총량이 설정된 영역은 누적/총량, 아니면 일별 목표 달성 평균
-function weekAreaRate(checks, goals, targets, weekNo, areaId) {
-  const days = SCHEDULE.filter((d) => d.week === weekNo);
+function weekAreaRate(plan, checks, goals, targets, weekNo, areaId) {
+  const days = plan.schedule.filter((d) => d.week === weekNo);
   const target = ((targets || {})["w" + weekNo] || {})[areaId];
   if (target > 0) return Math.min(1, sumActuals(goals, days, areaId) / target);
   return days.reduce((s, d) => s + areaScore(checks, goals, d.key, areaId), 0) / days.length;
@@ -375,12 +424,12 @@ function weekAreaRate(checks, goals, targets, weekNo, areaId) {
 
 // 주차 제출 가점: PPT 작성본·서평 두 파일이 각각 가점을 받아 합산 (주당 -10 ~ +10).
 // 마감이 지나도록 미제출이면 지각(-5)과 동일 취급 (지각 제출이 미제출보다 불리해지는 역전 방지)
-function weekBonus(submissions, weekNo) {
-  const lastDay = SCHEDULE.find((d) => d.week === weekNo && d.isLast);
+function weekBonus(plan, submissions, weekNo) {
+  const lastDay = plan.schedule.find((d) => d.week === weekNo && d.isLast);
   const deadline = new Date(lastDay.date + "T10:00:00").getTime();
   const pts = ["report-ppt", "report-book"].map((id) => {
     const m = (submissions || {})[`${lastDay.key}:${id}`];
-    if (m && m.at) return submitBonus(weekNo, m.at).pts;
+    if (m && m.at) return submitBonus(plan, weekNo, m.at).pts;
     return Date.now() > deadline ? -5 : 0;
   });
   return pts[0] + pts[1];
@@ -398,13 +447,13 @@ const REVIEW_ITEMS = [
 // 주차 점수 계산(100점 만점, 제출 가점은 별도 합산): 자동(PPT달성 20 + 독서달성 10) + 담당자 4항목
 // 달성률은 둘 다 제출 중심: 해당 제출물을 내면 만점 인정, 제출 전에는 일별 목표 달성률로 실시간 계산.
 // 일별 목표는 점수가 아니라 자기관리·육안 확인용 (빨리 끝내고 일찍 내면 만점+가점).
-function calcWeekReview(r, checks, goals, submissions, targets, weekNo) {
-  const lastDay = SCHEDULE.find((d) => d.week === weekNo && d.isLast);
+function calcWeekReview(plan, r, checks, goals, submissions, targets, weekNo) {
+  const lastDay = plan.schedule.find((d) => d.week === weekNo && d.isLast);
   const pptSubmitted = !!(((submissions || {})[`${lastDay.key}:report-ppt`] || {}).at);
-  const pptAuto = pptSubmitted ? 20 : Math.round(weekAreaRate(checks, goals, targets, weekNo, "ppt") * 20 * 10) / 10;
+  const pptAuto = pptSubmitted ? 20 : Math.round(weekAreaRate(plan, checks, goals, targets, weekNo, "ppt") * 20 * 10) / 10;
   const bookSubmitted = !!(((submissions || {})[`${lastDay.key}:report-book`] || {}).at);
-  const bookAuto = bookSubmitted ? 10 : Math.round(weekAreaRate(checks, goals, targets, weekNo, "book") * 10 * 10) / 10;
-  const bonus = weekBonus(submissions, weekNo);
+  const bookAuto = bookSubmitted ? 10 : Math.round(weekAreaRate(plan, checks, goals, targets, weekNo, "book") * 10 * 10) / 10;
+  const bonus = weekBonus(plan, submissions, weekNo);
   const m = r || {};
   const manual = (m.acc || 0) + (m.essay || 0) + (m.bookTest || 0) + (m.test || 0);
   const total = Math.round((pptAuto + bookAuto + manual) * 10) / 10;
@@ -424,8 +473,8 @@ function calcFinalTest(ft, cfgFinal) {
 }
 
 // 누적 점수(500점제): 주차 4개(평가 전엔 실시간) + FINAL. 가점은 별도 합산
-function calcCumulative(reviews, checks, goals, submissions, targets, cfgFinal) {
-  const weeks = WEEKS.map((w) => calcWeekReview((reviews || {})["w" + w.no], checks, goals, submissions, targets, w.no));
+function calcCumulative(plan, reviews, checks, goals, submissions, targets, cfgFinal) {
+  const weeks = plan.weeks.map((w) => calcWeekReview(plan, (reviews || {})["w" + w.no], checks, goals, submissions, targets, w.no));
   const ft = calcFinalTest((reviews || {}).finalTest, cfgFinal);
   // 누적(cum)은 가점을 포함한 최종 점수 — 대표 숫자는 항상 최종 점수, 분해(평가+가점)는 부가 표시
   const cum = Math.round((weeks.reduce((s, x) => s + (x.entered ? x.total : x.live) + x.bonus, 0) + (ft.entered ? ft.score : 0)) * 10) / 10;
@@ -434,12 +483,12 @@ function calcCumulative(reviews, checks, goals, submissions, targets, cfgFinal) 
 }
 
 // 오늘이 속한(또는 다음) 주차
-function currentWeekNo(today) {
-  const d = DAY_BY_DATE[today];
+function currentWeekNo(plan, today) {
+  const d = plan.byDate[today];
   if (d) return d.week;
-  if (today < SCHEDULE[0].date) return 1;
-  if (today > SCHEDULE[SCHEDULE.length - 1].date) return 4;
-  const next = SCHEDULE.find((x) => x.date >= today);
+  if (today < plan.schedule[0].date) return 1;
+  if (today > plan.schedule[plan.schedule.length - 1].date) return 4;
+  const next = plan.schedule.find((x) => x.date >= today);
   return next ? next.week : 1;
 }
 
@@ -632,7 +681,8 @@ function NamePicker({ T, onPick }) {
       alert("입사일을 달력에서 선택해 주세요.");
       return;
     }
-    db.ref(`users/${n}`).update({ joinDate, rank }).catch(() => {});
+    // 새 신입: 교육 시작일은 입사일로 시작 (관리 탭에서 변경 가능)
+    db.ref(`users/${n}`).update({ joinDate, rank, training: { start: joinDate } }).catch(() => {});
     onPick(n);
   };
 
@@ -815,19 +865,21 @@ function AllView({ T }) {
     );
 
   const today = todayStr();
-  const todayD = DAY_BY_DATE[today] || null;
-  const wkNo = currentWeekNo(today);
-  const wkDays = SCHEDULE.filter((d) => d.week === wkNo);
 
   const staffAll = cfgAll.staff || {};
-  const tw = (cfgAll.targets || {})["w" + wkNo] || {};
   const rows = Object.entries(users)
     .filter(([n]) => !ADMIN_NAMES.includes(n) && !staffAll[n])
     .map(([n, v]) => {
+      // 사람별 교육 일정 — 시작일이 다르면 주차·오늘·마감도 각자 기준으로 계산된다
+      const plan = planFor(v && v.training && v.training.start);
+      const todayD = plan.byDate[today] || null;
+      const wkNo = currentWeekNo(plan, today);
+      const wkDays = plan.schedule.filter((d) => d.week === wkNo);
+      const tw = (cfgAll.targets || {})["w" + wkNo] || {};
       const checks = (v && v.checks) || {};
       const goals = (v && v.goals) || {};
       const rv = (v && v.reviews) || {};
-      const cumU = calcCumulative(rv, checks, goals, (v && v.submissions) || {}, cfgAll.targets || {}, cfgAll.finalTest);
+      const cumU = calcCumulative(plan, rv, checks, goals, (v && v.submissions) || {}, cfgAll.targets || {}, cfgAll.finalTest);
       const evaluated = cumU.weeks.filter((x) => x.entered);
       const revSummary =
         `누적 ${cumU.cum}/500` +
@@ -844,7 +896,7 @@ function AllView({ T }) {
         const plannedUntil = sumTargets(goals, wkDays, a, today);
         return { a, target: tw[a], actual, planSum, diff: actual - plannedUntil };
       });
-      return { name: n, rank: (v && v.rank) || "", mentor: (v && v.mentor) || "", joinDate: (v && v.joinDate) || "", revSummary, stats: calcStats(checks, goals), todayPct, planned, areas };
+      return { name: n, rank: (v && v.rank) || "", mentor: (v && v.mentor) || "", joinDate: (v && v.joinDate) || "", start: plan.start, revSummary, stats: calcStats(plan, checks, goals), todayPct, planned, areas };
     })
     .sort((a, b) => b.stats.all.pct - a.stats.all.pct || a.name.localeCompare(b.name, "ko"));
 
@@ -862,6 +914,7 @@ function AllView({ T }) {
               👤 {r.name}
               {r.rank ? ` ${r.rank}` : ""}
               {r.joinDate && <span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}> ({fmtJoin(r.joinDate)})</span>}
+              <span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}> · 교육 시작 {r.start.slice(5).replace("-", "/")}</span>
               {r.mentor && <span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}> · 담당 {r.mentor}</span>}
             </span>
             <span style={{ fontSize: 14, fontWeight: 800, color: r.stats.all.pct === 100 ? T.green : T.blue }}>
@@ -910,11 +963,11 @@ function AllView({ T }) {
           ))}
           <Bar pct={r.stats.all.pct} h={8} T={T} />
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            {WEEKS.map((w) => (
-              <div key={w.no} style={{ flex: 1, textAlign: "center", fontSize: 11.5, color: T.faint }}>
-                {w.no}주{" "}
-                <span style={{ fontWeight: 800, color: r.stats.per[w.no].pct === 100 ? T.green : T.sub }}>
-                  {r.stats.per[w.no].pct}%
+            {[1, 2, 3, 4].map((no) => (
+              <div key={no} style={{ flex: 1, textAlign: "center", fontSize: 11.5, color: T.faint }}>
+                {no}주{" "}
+                <span style={{ fontWeight: 800, color: r.stats.per[no].pct === 100 ? T.green : T.sub }}>
+                  {r.stats.per[no].pct}%
                 </span>
               </div>
             ))}
@@ -927,19 +980,18 @@ function AllView({ T }) {
 
 function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   const today = todayStr();
-  const todayIdx = SCHEDULE.findIndex((d) => d.date === today);
-  const defaultWeek = currentWeekNo(today);
 
   const T = THEMES[theme];
   const [view, setView] = useState("home"); // home | guide | plan | score (+ 관리자: all | review | settings)
   const [planMode, setPlanMode] = useState("week"); // 목표관리 탭 내부: week(기본) | calendar
   const [guideMode, setGuideMode] = useState("purpose"); // 교육안내 탭 내부: purpose | scoring | rules | curriculum
   const [homeMode, setHomeMode] = useState("today"); // 홈 하단 세그먼트: today | submit | comment
-  const [week, setWeek] = useState(defaultWeek);
+  const [training, setTraining] = useState({}); // 사람별 교육 설정: {start, materials} — 없으면 1기 기본
+  const [week, setWeek] = useState(1);
   const [checks, setChecks] = useState({});
   const [logs, setLogs] = useState({});
   const [goals, setGoals] = useState({});
-  const [openDay, setOpenDay] = useState(todayIdx >= 0 ? SCHEDULE[todayIdx].key : null);
+  const [openDay, setOpenDay] = useState(null);
   const [openScoreWeek, setOpenScoreWeek] = useState(null); // 내 평가 탭의 주차 드롭다운
   const [addGoalFor, setAddGoalFor] = useState(null); // "dayKey:areaId"
   const [loaded, setLoaded] = useState(false);
@@ -952,22 +1004,54 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   const [uploadingKey, setUploadingKey] = useState(null);
   const [matUploading, setMatUploading] = useState(null); // 학습자료 업로드 진행: {week, done, total}
   const [matDragWeek, setMatDragWeek] = useState(null); // 파일을 끌어다 놓는 중인 주차 번호
+  const [matTarget, setMatTarget] = useState("공통"); // 담당자의 자료 대상: "공통" 또는 신입 이름
+  const [traineeNames, setTraineeNames] = useState(null); // 담당자용 신입 이름 목록 (자료 대상 선택)
 
-  // ── 학습자료 (커리큘럼): 담당자가 올리면 전원에게 실시간 공유. 여러 파일 한꺼번에 가능 ──
+  const targets = cfg.targets || {};
+  const staff = cfg.staff || {};
+  const isAdmin = ADMIN_NAMES.includes(name);
+  const isStaff = isAdmin || !!staff[name];
+
+  // ── 사람별 교육 일정 (시작일 기반, 없으면 1기 기본) ──
+  const plan = useMemo(() => planFor(training.start), [training.start]);
+  const todayIdx = plan.schedule.findIndex((d) => d.date === today);
+  const defaultWeek = currentWeekNo(plan, today);
+  const wkList = useMemo(() => mergeWeeks(plan, cfg.weeks), [plan, cfg]);
+  const calRows = useMemo(() => buildCalendarRows(plan), [plan]);
+  const planEnd = plan.weeks[3].dates[4]; // 교육 마지막 날
+  // 교육 기간에 낀 휴무일 안내문 (없으면 빈 문자열)
+  const offNote = plan.offDays.length
+    ? plan.offDays.map((h) => `${+h.slice(5, 7)}/${+h.slice(8, 10)}(${fmtDate(h).dow}) ${HOLIDAYS[h]}`).join(" · ") + " 휴무 제외"
+    : "";
+
+  // 일정이 바뀌면(로딩 완료·시작일 변경) 기본 주차와 오늘 카드를 다시 맞춘다
+  useEffect(() => {
+    setWeek(currentWeekNo(plan, today));
+    const td = plan.byDate[today];
+    setOpenDay(td ? td.key : null);
+  }, [plan]);
+
+  // ── 학습자료 (커리큘럼): 공통 자료 + 신입별 개인 자료. 여러 파일 한꺼번에 가능 ──
+  // 저장 위치 — 공통: config/materials/w<주차>, 개인: users/<이름>/training/materials/w<주차>
+  const matPaths = (weekNo) =>
+    matTarget === "공통" || !isStaff
+      ? { sref: `materials/w${weekNo}`, dref: `config/materials/w${weekNo}` }
+      : { sref: `materials/u/${matTarget}/w${weekNo}`, dref: `users/${matTarget}/training/materials/w${weekNo}` };
   const uploadMaterials = async (weekNo, fileList) => {
     const files = Array.from(fileList || []);
     if (!files.length || matUploading) return;
     const ok = files.filter((f) => f.size <= 100 * 1024 * 1024);
     if (ok.length < files.length) alert("100MB가 넘는 파일은 건너뛰어요.");
     if (!ok.length) return;
+    const { sref, dref } = matPaths(weekNo);
     for (let i = 0; i < ok.length; i++) {
       setMatUploading({ week: weekNo, done: i, total: ok.length });
       const file = ok[i];
       try {
-        const path = `materials/w${weekNo}/${Date.now()}_${file.name}`;
+        const path = `${sref}/${Date.now()}_${file.name}`;
         const snap = await storage.ref(path).put(file);
         const url = await snap.ref.getDownloadURL();
-        await db.ref(`config/materials/w${weekNo}`).push({ fileName: file.name, size: file.size, path, url, at: Date.now(), by: name });
+        await db.ref(dref).push({ fileName: file.name, size: file.size, path, url, at: Date.now(), by: name });
       } catch (e) {
         alert(`'${file.name}' 업로드에 실패했어요. 인터넷 연결을 확인해 주세요.`);
       }
@@ -977,13 +1061,32 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   const deleteMaterial = async (weekNo, key, m) => {
     if (!confirm(`'${m.fileName}' 자료를 삭제할까요?`)) return;
     try { await storage.ref(m.path).delete(); } catch {}
-    db.ref(`config/materials/w${weekNo}/${key}`).remove();
+    db.ref(`${matPaths(weekNo).dref}/${key}`).remove();
   };
-  const targets = cfg.targets || {};
-  const staff = cfg.staff || {};
-  const wkList = useMemo(() => mergeWeeks(cfg.weeks), [cfg]);
-  const isAdmin = ADMIN_NAMES.includes(name);
-  const isStaff = isAdmin || !!staff[name];
+
+  // 담당자가 안내 탭을 열면 자료 대상 선택용 신입 목록을 1회 불러온다
+  useEffect(() => {
+    if (!isStaff || view !== "guide" || traineeNames !== null) return;
+    db.ref("users")
+      .once("value")
+      .then((s) => {
+        const all = s.val() || {};
+        setTraineeNames(Object.keys(all).filter((n) => !ADMIN_NAMES.includes(n) && !(cfg.staff || {})[n]).sort((a, b) => a.localeCompare(b, "ko")));
+      })
+      .catch(() => setTraineeNames([]));
+  }, [isStaff, view]);
+
+  // 담당자가 특정 신입을 자료 대상으로 고르면 그 사람의 개인 자료를 실시간 구독
+  const [matTargetData, setMatTargetData] = useState({});
+  useEffect(() => {
+    if (!isStaff || matTarget === "공통") {
+      setMatTargetData({});
+      return;
+    }
+    const ref = db.ref(`users/${matTarget}/training/materials`);
+    const cb = ref.on("value", (s) => setMatTargetData(s.val() || {}), () => setMatTargetData({}));
+    return () => ref.off("value", cb);
+  }, [isStaff, matTarget]);
 
   const CAT_STYLE = {
     PPT: { bg: T.blueSoft, fg: T.blue },
@@ -1009,6 +1112,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           setRank(v.rank || "");
           setReviews(v.reviews || {});
           setSubmissions(v.submissions || {});
+          setTraining(v.training || {});
         } else if (!migrated) {
           migrated = true;
           // 예전 기기별 저장(localStorage) 기록이 있으면 온라인으로 1회 이전
@@ -1030,6 +1134,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           setMentor("");
           setRank("");
           setReviews({});
+          setTraining({});
         }
         setLoaded(true);
       },
@@ -1178,11 +1283,11 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   };
 
   // ── 진행률 ──
-  const stats = useMemo(() => calcStats(checks, goals), [checks, goals]);
+  const stats = useMemo(() => calcStats(plan, checks, goals), [plan, checks, goals]);
 
   const dayDoneMap = useMemo(() => {
     const m = {};
-    SCHEDULE.forEach((d) => {
+    plan.schedule.forEach((d) => {
       let doneCount = 0;
       d.tasks.forEach((t) => {
         if (taskScore(checks, goals, d, t) >= 0.999) doneCount++;
@@ -1190,10 +1295,10 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
       m[d.key] = { done: doneCount, total: d.tasks.length, complete: doneCount === d.tasks.length };
     });
     return m;
-  }, [checks, goals]);
+  }, [plan, checks, goals]);
 
   const goDay = (dateStr) => {
-    const d = DAY_BY_DATE[dateStr];
+    const d = plan.byDate[dateStr];
     if (!d) return;
     setWeek(d.week);
     setOpenDay(d.key);
@@ -1202,10 +1307,10 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   };
 
   const curWeek = wkList.find((w) => w.no === week);
-  const curDays = SCHEDULE.filter((d) => d.week === week);
-  const cumu = calcCumulative(reviews, checks, goals, submissions, targets, cfg.finalTest);
+  const curDays = plan.schedule.filter((d) => d.week === week);
+  const cumu = calcCumulative(plan, reviews, checks, goals, submissions, targets, cfg.finalTest);
   // 홈에 보여줄 "오늘"(교육일이 아니면 다음 교육일)
-  const homeDay = todayIdx >= 0 ? SCHEDULE[todayIdx] : SCHEDULE.find((d) => d.date >= today) || SCHEDULE[SCHEDULE.length - 1];
+  const homeDay = todayIdx >= 0 ? plan.schedule[todayIdx] : plan.schedule.find((d) => d.date >= today) || plan.schedule[plan.schedule.length - 1];
 
   // 제출 첨부 UI (Day 카드·홈 제출함 공용)
   const renderAttach = (dayKey, weekNo, t) => {
@@ -1223,8 +1328,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               📄 {m.fileName} ({fmtSize(m.size)})
             </span>
             {m.at && (
-              <span style={{ fontSize: 11.5, fontWeight: 800, flexShrink: 0, color: submitBonus(weekNo, m.at).pts > 0 ? T.green : submitBonus(weekNo, m.at).pts < 0 ? T.red : T.sub }}>
-                {submitBonus(weekNo, m.at).label}
+              <span style={{ fontSize: 11.5, fontWeight: 800, flexShrink: 0, color: submitBonus(plan, weekNo, m.at).pts > 0 ? T.green : submitBonus(plan, weekNo, m.at).pts < 0 ? T.red : T.sub }}>
+                {submitBonus(plan, weekNo, m.at).label}
               </span>
             )}
             <a
@@ -1287,7 +1392,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "4px 4px 20px" }}>
           <div>
             <div style={{ fontSize: 13, color: T.orange, fontWeight: 700, letterSpacing: "0.01em", marginBottom: 5 }}>
-              Elio INITIAN Training Program · 2026.9.2(수) ~ 10.1(목)
+              Elio INITIAN Training Program · {plan.start.slice(0, 4)}.{+plan.start.slice(5, 7)}.{+plan.start.slice(8, 10)}(
+              {fmtDate(plan.start).dow}) ~ {+planEnd.slice(5, 7)}.{+planEnd.slice(8, 10)}({fmtDate(planEnd).dow})
             </div>
             <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.01em", lineHeight: 1.3 }}>
               {rank ? `${name} ${rank}` : `${name}님`}, 지금 <span style={{ color: T.blue }}>{stats.all.pct}%</span> 왔어요
@@ -1460,19 +1566,19 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               <span style={{ fontSize: 16, fontWeight: 800 }}>📋 내 점수</span>
               {mentor && <span style={{ fontSize: 13, fontWeight: 700, color: T.sub }}>담당 {mentor}</span>}
             </div>
-            {WEEKS.map((w, i) => {
+            {plan.weeks.map((w, i) => {
               const rv = cumu.weeks[i];
               const r = reviews["w" + w.no] || {};
               const openW = openScoreWeek === w.no;
-              const lastDay = SCHEDULE.find((d) => d.week === w.no && d.isLast);
+              const lastDay = plan.schedule.find((d) => d.week === w.no && d.isLast);
               // 제출 가점 정보 (해당 과정 섹션 아래에 표시)
               const subInfo = (id) => {
                 const m = submissions[`${lastDay.key}:${id}`];
                 if (m && m.at) {
-                  const b = submitBonus(w.no, m.at);
+                  const b = submitBonus(plan, w.no, m.at);
                   return { pts: b.pts, text: `제출 가점 ${b.label}` };
                 }
-                const nowPts = submitBonus(w.no, Date.now()).pts;
+                const nowPts = submitBonus(plan, w.no, Date.now()).pts;
                 return nowPts >= 0
                   ? { pts: null, text: `제출 전 — 지금 내면 가점 ${nowPts > 0 ? `+${nowPts}` : "0"}` }
                   : { pts: -5, text: "미제출 — 가점 -5" };
@@ -1597,7 +1703,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               )}
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginTop: 10, padding: "0 4px" }}>
-              {WEEKS.map((w, i) => {
+              {plan.weeks.map((w, i) => {
                 const rv = cumu.weeks[i];
                 const liveScore = Math.max(0, Math.round(((rv.entered ? rv.total : rv.live) + rv.bonus) * 10) / 10);
                 return (
@@ -1814,10 +1920,26 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           </>
         )}
 
-        {/* 📚 커리큘럼 */}
+        {/* 📚 커리큘럼 — 학습자료는 공통 + 개인(신입별) 이중 구조 */}
         {guideMode === "curriculum" && (
         <div style={card(12)}>
           <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>📚 커리큘럼</div>
+          {isStaff && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "8px 0 4px" }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: T.sub }}>자료 대상</span>
+              <select
+                value={matTarget}
+                onChange={(e) => setMatTarget(e.target.value)}
+                style={{ fontFamily: FONT, fontSize: 13.5, fontWeight: 700, border: `1.5px solid ${T.inputBorder}`, borderRadius: 8, padding: "6px 10px", background: T.cardSoft, color: T.text }}
+              >
+                <option value="공통">공통 (전원에게 보임)</option>
+                {(traineeNames || []).map((n) => (
+                  <option key={n} value={n}>{n} 개인 자료</option>
+                ))}
+              </select>
+              <span style={{ fontSize: 12, color: T.faint }}>개인 자료는 그 사람에게만 보여요</span>
+            </div>
+          )}
           {wkList.map((w, i) => (
             <div key={w.no} style={{ padding: "13px 0", borderBottom: i === wkList.length - 1 ? "none" : `1px solid ${T.line}` }}>
               <div style={{ fontSize: 16, fontWeight: 800, color: T[WEEK_COLOR[w.no]] }}>
@@ -1831,8 +1953,13 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                 📚 『{w.book}』
               </div>
               {(() => {
-                const mats = (cfg.materials || {})["w" + w.no] || {};
-                const entries = Object.entries(mats).sort((a, b) => (a[1].at || 0) - (b[1].at || 0));
+                // 공통 자료 + 개인 자료 합치기 — 신입은 본인 것, 담당자는 선택한 대상의 것
+                const common = Object.entries((cfg.materials || {})["w" + w.no] || {}).map(([k, m]) => [k, m, "공통"]);
+                const personalSrc = isStaff
+                  ? matTarget === "공통" ? {} : matTargetData
+                  : (training.materials || {});
+                const personal = Object.entries(personalSrc["w" + w.no] || {}).map(([k, m]) => [k, m, "개인"]);
+                const entries = [...common, ...personal].sort((a, b) => (a[1].at || 0) - (b[1].at || 0));
                 if (!entries.length && !isStaff) return null;
                 const dragOn = matDragWeek === w.no;
                 const busy = matUploading && matUploading.week === w.no;
@@ -1850,9 +1977,11 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                       transition: "background .15s, border-color .15s",
                     }}
                   >
-                    <div style={{ fontSize: 13, fontWeight: 800, color: T.sub, marginBottom: 6 }}>📥 학습자료</div>
-                    {entries.map(([k, m]) => (
-                      <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0" }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: T.sub, marginBottom: 6 }}>
+                      📥 학습자료{isStaff && matTarget !== "공통" ? ` — ${matTarget}에게 보이는 목록` : ""}
+                    </div>
+                    {entries.map(([k, m, src]) => (
+                      <div key={src + k} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0" }}>
                         <a
                           href={m.url}
                           target="_blank"
@@ -1862,7 +1991,11 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                           📄 {m.fileName}
                         </a>
                         <span style={{ fontSize: 12, color: T.faint, flexShrink: 0 }}>({fmtSize(m.size)})</span>
-                        {isStaff && (
+                        {isStaff && src === "개인" && (
+                          <span style={{ fontSize: 11, fontWeight: 800, color: T.purple, background: T.purpleSoft, borderRadius: 6, padding: "1px 6px", flexShrink: 0 }}>개인</span>
+                        )}
+                        {/* 삭제는 지금 선택된 대상의 자료만 — 공통 자료는 '공통' 모드에서 삭제 */}
+                        {isStaff && src === (matTarget === "공통" ? "공통" : "개인") && (
                           <button
                             onClick={() => deleteMaterial(w.no, k, m)}
                             style={{ marginLeft: "auto", border: "none", background: "transparent", color: T.red, cursor: "pointer", fontFamily: FONT, fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}
@@ -1902,9 +2035,11 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               })()}
             </div>
           ))}
-          <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 8, background: T.redSoft, color: T.red, fontSize: 13, fontWeight: 600, lineHeight: 1.5 }}>
-            추석 연휴 9/24(목)~9/26(토) 휴무 — 4주차는 10/1(목)까지 진행
-          </div>
+          {offNote && (
+            <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 8, background: T.redSoft, color: T.red, fontSize: 13, fontWeight: 600, lineHeight: 1.5 }}>
+              {offNote}
+            </div>
+          )}
         </div>
         )}
           </>
@@ -1949,7 +2084,9 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
         {view === "plan" && planMode === "calendar" && (
           <>
             <div style={card()}>
-              <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>2026년 9월 ~ 10월 초</div>
+              <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>
+                {plan.start.slice(0, 4)}년 {+plan.start.slice(5, 7)}월 ~ {+planEnd.slice(5, 7)}월
+              </div>
               <div style={{ fontSize: 13, color: T.faint, marginBottom: 14 }}>날짜를 누르면 해당 일의 체크리스트로 이동해요</div>
 
               {/* 요일 헤더 */}
@@ -1962,16 +2099,16 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               </div>
 
               {/* 날짜 그리드 */}
-              {CAL_ROWS.map((row, ri) => (
+              {calRows.map((row, ri) => (
                 <div key={ri} style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 4 }}>
                   {row.map((cell) => {
-                    const tDay = DAY_BY_DATE[cell.dateStr];
+                    const tDay = plan.byDate[cell.dateStr];
                     const holiday = HOLIDAYS[cell.dateStr];
                     const isToday = cell.dateStr === today;
                     const wc = tDay ? T[WEEK_COLOR[tDay.week]] : null;
                     const wcSoft = tDay ? T[WEEK_COLOR[tDay.week] + "Soft"] : null;
                     const st = tDay ? dayDoneMap[tDay.key] : null;
-                    const outRange = cell.dateStr < "2026-09-01" || cell.dateStr > "2026-10-02";
+                    const outRange = cell.dateStr < plan.start || cell.dateStr > planEnd;
 
                     return (
                       <button
@@ -2033,7 +2170,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                     alignItems: "center",
                     gap: 12,
                     padding: "11px 0",
-                    borderBottom: i === WEEKS.length - 1 ? "none" : `1px solid ${T.line}`,
+                    borderBottom: i === wkList.length - 1 ? "none" : `1px solid ${T.line}`,
                   }}
                 >
                   <span style={{ width: 12, height: 12, borderRadius: 4, background: T[WEEK_COLOR[w.no]], flexShrink: 0 }} />
@@ -2050,9 +2187,11 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                   </span>
                 </div>
               ))}
-              <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 8, background: T.redSoft, color: T.red, fontSize: 12.5, fontWeight: 600, lineHeight: 1.5 }}>
-                추석 연휴 9/24(목)~9/26(토)는 휴무 — 4주차가 10/1(목)까지 이어집니다
-              </div>
+              {offNote && (
+                <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 8, background: T.redSoft, color: T.red, fontSize: 12.5, fontWeight: 600, lineHeight: 1.5 }}>
+                  {offNote}
+                </div>
+              )}
             </div>
           </>
         )}
@@ -2062,7 +2201,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           <>
             {/* 주차 탭 */}
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-              {WEEKS.map((w) => {
+              {plan.weeks.map((w) => {
                 const active = w.no === week;
                 const wc = T[WEEK_COLOR[w.no]];
                 return (
@@ -2428,7 +2567,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
         {/* ── 홈 세그먼트: 이번 주 제출함 (+ 가점 카운트다운) ── */}
         {view === "home" && homeMode === "submit" &&
           (() => {
-            const lastDay = SCHEDULE.find((dd) => dd.week === defaultWeek && dd.isLast);
+            const lastDay = plan.schedule.find((dd) => dd.week === defaultWeek && dd.isLast);
             const wkObj = wkList.find((w) => w.no === defaultWeek);
             const lf = fmtDate(lastDay.date);
             const items = [
@@ -2436,7 +2575,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               { id: "report-book", label: `책 서평 『${wkObj.book}』` },
             ];
             const subCount = items.filter((it) => submissions[`${lastDay.key}:${it.id}`]).length;
-            const nowB = submitBonus(defaultWeek, Date.now());
+            const nowB = submitBonus(plan, defaultWeek, Date.now());
             return (
               <div style={card(12)}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8, flexWrap: "wrap", gap: 4 }}>
@@ -2750,13 +2889,19 @@ function AdminPanel({ T, targets, weeks, staff, finalTest, setSaveState }) {
         </div>
       </div>
 
-      {/* ④ 신입별 담당자 지정 */}
+      {/* ④ 신입별 담당자·교육 시작일 지정 */}
       <div style={box}>
-        <div style={secTitle}>신입별 교육담당자 지정</div>
-        <div style={secDesc}>신입 화면의 평가 카드와 전체 현황에 "담당 OOO"로 표시돼요.</div>
+        <div style={secTitle}>신입별 담당자 · 교육 시작일</div>
+        <div style={secDesc}>
+          담당자는 신입 화면의 평가 카드와 전체 현황에 "담당 OOO"로 표시돼요.
+          <br />
+          교육 시작일을 바꾸면 그 사람의 4주 일정(주말·공휴일 제외)·마감·가점 기준이 전부 그 날짜 기준으로
+          다시 계산돼요. 비워두면 1기 기본(2026-09-02)입니다. ★이미 교육 중인 사람의 시작일을 바꾸면
+          기록된 일자별 체크·목표가 다른 날짜에 붙으므로 시작 전에만 설정하세요.
+        </div>
         {traineeNames.length === 0 && <div style={{ fontSize: 13, color: T.faint }}>등록된 신입이 없어요.</div>}
         {traineeNames.map((n) => (
-          <div key={n} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
+          <div key={n} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", flexWrap: "wrap" }}>
             <span style={{ width: 118, fontSize: 14, fontWeight: 700, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               👤 {n}{users[n] && users[n].rank ? ` ${users[n].rank}` : ""}
             </span>
@@ -2766,6 +2911,12 @@ function AdminPanel({ T, targets, weeks, staff, finalTest, setSaveState }) {
               value={(users[n] && users[n].mentor) || ""}
               placeholder="담당자 이름"
               onCommit={(t) => saveDb(`users/${n}/mentor`, t || null)}
+            />
+            <input
+              type="date"
+              value={(users[n] && users[n].training && users[n].training.start) || ""}
+              onChange={(e) => saveDb(`users/${n}/training/start`, e.target.value || null)}
+              style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, border: `1.5px solid ${T.inputBorder}`, borderRadius: 8, padding: "7px 10px", background: T.cardSoft, color: T.text }}
             />
           </div>
         ))}
@@ -2844,8 +2995,9 @@ function ReviewPanel({ T, me, setSaveState }) {
       {!sel && names.length > 0 && <div style={{ fontSize: 13.5, color: T.faint }}>평가할 신입을 선택하세요.</div>}
       {cur &&
         (() => {
+          const selPlan = planFor(cur.training && cur.training.start);
           const subs = cur.submissions || {};
-          const items = SCHEDULE.filter((dd) => dd.isLast).flatMap((dd) =>
+          const items = selPlan.schedule.filter((dd) => dd.isLast).flatMap((dd) =>
             dd.tasks
               .filter((tt) => tt.cat === "제출")
               .map((tt) => ({ wk: dd.week, key: `${dd.key}:${tt.id}`, label: tt.id === "report-ppt" ? "PPT 작성본" : "책 서평" }))
@@ -2866,8 +3018,8 @@ function ReviewPanel({ T, me, setSaveState }) {
                       {m.fileName} ({fmtSize(m.size)})
                     </span>
                     {m.at && (
-                      <span style={{ fontSize: 11.5, fontWeight: 800, flexShrink: 0, color: submitBonus(it.wk, m.at).pts > 0 ? T.green : T.red }}>
-                        {submitBonus(it.wk, m.at).label}
+                      <span style={{ fontSize: 11.5, fontWeight: 800, flexShrink: 0, color: submitBonus(selPlan, it.wk, m.at).pts > 0 ? T.green : T.red }}>
+                        {submitBonus(selPlan, it.wk, m.at).label}
                       </span>
                     )}
                     <a
@@ -2889,6 +3041,7 @@ function ReviewPanel({ T, me, setSaveState }) {
           const wk = "w" + w.no;
           const r = (cur.reviews || {})[wk] || {};
           const rv = calcWeekReview(
+            planFor(cur.training && cur.training.start),
             (cur.reviews || {})[wk],
             cur.checks || {},
             cur.goals || {},
