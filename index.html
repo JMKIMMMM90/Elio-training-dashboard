@@ -200,7 +200,7 @@ function taskLabel(task, w) {
 const ADMIN_NAMES = ["김재민"];
 
 // 앱 버전 — 배포(push)할 때마다 올린다. 화면 맨 아래 표시되어 "새 버전이 반영됐는지" 확인용.
-const APP_VERSION = "v10.6.3";
+const APP_VERSION = "v10.6.4";
 
 function buildSchedule(weeks) {
   const days = [];
@@ -275,6 +275,15 @@ function planFor(start) {
   const s = start || DEFAULT_START;
   if (!PLAN_CACHE[s]) PLAN_CACHE[s] = makePlan(s);
   return PLAN_CACHE[s];
+}
+
+// 교육 시작일 결정: ① training/start(관리 탭 설정) ② 입사일이 1기 시작(9/2) 이후면 입사일 ③ 1기 기본.
+// ②는 시작일 설정 기능이 생기기 전에 등록된 2기 이후 신입(예: 이동현)을 위한 자동 보정 —
+// 1기(민지홍, 입사 9/1)는 9/2 이후가 아니므로 그대로 1기 기본이 유지된다.
+function resolveStart(training, joinDate) {
+  if (training && training.start) return training.start;
+  if (joinDate && joinDate > DEFAULT_START) return joinDate;
+  return DEFAULT_START;
 }
 
 function fmtDate(dateStr) {
@@ -878,7 +887,7 @@ function AllView({ T }) {
     .filter(([n]) => !ADMIN_NAMES.includes(n) && !staffAll[n])
     .map(([n, v]) => {
       // 사람별 교육 일정 — 시작일이 다르면 주차·오늘·마감도 각자 기준으로 계산된다
-      const plan = planFor(v && v.training && v.training.start);
+      const plan = planFor(resolveStart(v && v.training, v && v.joinDate));
       const todayD = plan.byDate[today] || null;
       const wkNo = currentWeekNo(plan, today);
       const wkDays = plan.schedule.filter((d) => d.week === wkNo);
@@ -1006,6 +1015,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   const [cfg, setCfg] = useState({}); // config 전체: targets(총량)·weeks(과제명)·staff(담당자 명단)
   const [mentor, setMentor] = useState("");
   const [rank, setRank] = useState("");
+  const [joinDate, setJoinDate] = useState(""); // 교육 시작일 보정용 (resolveStart)
   const [reviews, setReviews] = useState({});
   const [submissions, setSubmissions] = useState({});
   const [uploadingKey, setUploadingKey] = useState(null);
@@ -1019,8 +1029,8 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   const isAdmin = ADMIN_NAMES.includes(name);
   const isStaff = isAdmin || !!staff[name];
 
-  // ── 사람별 교육 일정 (시작일 기반, 없으면 1기 기본) ──
-  const plan = useMemo(() => planFor(training.start), [training.start]);
+  // ── 사람별 교육 일정 (시작일 기반, 없으면 입사일→1기 기본 순 보정) ──
+  const plan = useMemo(() => planFor(resolveStart(training, joinDate)), [training, joinDate]);
   const todayIdx = plan.schedule.findIndex((d) => d.date === today);
   const defaultWeek = currentWeekNo(plan, today);
   const wkList = useMemo(() => mergeWeeks(plan, cfg.weeks), [plan, cfg]);
@@ -1117,6 +1127,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           setGoals(v.goals || {});
           setMentor(v.mentor || "");
           setRank(v.rank || "");
+          setJoinDate(v.joinDate || "");
           setReviews(v.reviews || {});
           setSubmissions(v.submissions || {});
           setTraining(v.training || {});
@@ -1140,6 +1151,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
           setGoals({});
           setMentor("");
           setRank("");
+          setJoinDate("");
           setReviews({});
           setTraining({});
         }
@@ -3004,7 +3016,7 @@ function ReviewPanel({ T, me, setSaveState }) {
       {!sel && names.length > 0 && <div style={{ fontSize: 13.5, color: T.faint }}>평가할 신입을 선택하세요.</div>}
       {cur &&
         (() => {
-          const selPlan = planFor(cur.training && cur.training.start);
+          const selPlan = planFor(resolveStart(cur.training, cur.joinDate));
           const subs = cur.submissions || {};
           const items = selPlan.schedule.filter((dd) => dd.isLast).flatMap((dd) =>
             dd.tasks
@@ -3050,7 +3062,7 @@ function ReviewPanel({ T, me, setSaveState }) {
           const wk = "w" + w.no;
           const r = (cur.reviews || {})[wk] || {};
           const rv = calcWeekReview(
-            planFor(cur.training && cur.training.start),
+            planFor(resolveStart(cur.training, cur.joinDate)),
             (cur.reviews || {})[wk],
             cur.checks || {},
             cur.goals || {},
