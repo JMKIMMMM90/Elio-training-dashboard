@@ -142,7 +142,6 @@ const WEEKS = [
     project: "[프로세스] 울산대 검사실",
     book: "경영의 명의",
     dates: ["2026-09-23", "2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01"],
-    holidayNote: "추석 연휴 9/24(목)~9/26(토) 휴무 → 4주차는 10/1(목)까지 진행",
   },
 ];
 
@@ -253,7 +252,12 @@ function makePlan(start) {
   }
   const weeks = WEEKS.map((w, i) => {
     const dates = all.slice(i * 5, i * 5 + 5);
-    return { ...w, dates, range: rangeLabel(dates) };
+    // 주차 기간(첫날~마지막 날)에 낀 휴무일 안내문 — 일정마다 동적으로 생성
+    const offs = Object.keys(HOLIDAYS).filter((h) => h >= dates[0] && h <= dates[4]).sort();
+    const holidayNote = offs.length
+      ? `${offs.map((h) => `${HOLIDAYS[h]} ${+h.slice(5, 7)}/${+h.slice(8, 10)}(${fmtDate(h).dow})`).join(" · ")} 휴무 → ${w.no}주차는 ${+dates[4].slice(5, 7)}/${+dates[4].slice(8, 10)}(${fmtDate(dates[4]).dow})까지 진행`
+      : "";
+    return { ...w, dates, range: rangeLabel(dates), holidayNote };
   });
   const schedule = buildSchedule(weeks);
   const byDate = Object.fromEntries(schedule.map((x) => [x.date, x]));
