@@ -200,7 +200,7 @@ function taskLabel(task, w) {
 const ADMIN_NAMES = ["김재민"];
 
 // 앱 버전 — 배포(push)할 때마다 올린다. 화면 맨 아래 표시되어 "새 버전이 반영됐는지" 확인용.
-const APP_VERSION = "v10.15.2";
+const APP_VERSION = "v10.15.3";
 
 function buildSchedule(weeks) {
   const days = [];
@@ -449,10 +449,13 @@ function weekAreaRate(plan, checks, goals, targets, weekNo, areaId) {
 
 // 주차 제출 가점: PPT 작성본·서평 두 파일이 각각 가점을 받아 합산 (주당 -10 ~ +10).
 // 마감이 지나도록 미제출이면 지각(-5)과 동일 취급 (지각 제출이 미제출보다 불리해지는 역전 방지)
-function weekBonus(plan, submissions, weekNo) {
+function weekBonus(plan, submissions, weekNo, r) {
   const lastDay = plan.schedule.find((d) => d.week === weekNo && d.isLast);
   const deadline = new Date(lastDay.date + "T10:00:00").getTime();
+  // 담당자가 평가 탭에서 확정한 가점(pptBonus·bookBonus)이 있으면 자동 판정을 덮어쓴다 (2026-10-15)
+  const ov = { "report-ppt": (r || {}).pptBonus, "report-book": (r || {}).bookBonus };
   const pts = ["report-ppt", "report-book"].map((id) => {
+    if (ov[id] != null) return ov[id];
     const m = (submissions || {})[`${lastDay.key}:${id}`];
     if (m && m.at) return submitBonus(plan, weekNo, m.at).pts;
     return Date.now() > deadline ? -5 : 0;
@@ -488,7 +491,7 @@ function calcWeekReview(plan, r, checks, goals, submissions, targets, weekNo) {
         : Math.round(weekAreaRate(plan, checks, goals, targets, weekNo, "ppt") * 20 * 10) / 10;
   const bookSubmitted = !!(((submissions || {})[`${lastDay.key}:report-book`] || {}).at);
   const bookAuto = bookSubmitted ? 10 : Math.round(weekAreaRate(plan, checks, goals, targets, weekNo, "book") * 10 * 10) / 10;
-  const bonus = weekBonus(plan, submissions, weekNo);
+  const bonus = weekBonus(plan, submissions, weekNo, r);
   const m = r || {};
   const manual = (m.acc || 0) + (m.essay || 0) + (m.bookTest || 0) + (m.test || 0);
   const total = Math.round((pptAuto + bookAuto + manual) * 10) / 10;
@@ -1610,8 +1613,10 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               const r = reviews["w" + w.no] || {};
               const openW = openScoreWeek === w.no;
               const lastDay = plan.schedule.find((d) => d.week === w.no && d.isLast);
-              // 제출 가점 정보 (해당 과정 섹션 아래에 표시)
+              // 제출 가점 정보 (해당 과정 섹션 아래에 표시) — 담당자 확정값이 있으면 그것을 우선 표시
               const subInfo = (id) => {
+                const ov = r[id === "report-ppt" ? "pptBonus" : "bookBonus"];
+                if (ov != null) return { pts: ov, text: `제출 가점 확정 ${ov > 0 ? `+${ov}` : ov} (담당자)` };
                 const m = submissions[`${lastDay.key}:${id}`];
                 if (m && m.at) {
                   const b = submitBonus(plan, w.no, m.at);
@@ -3164,6 +3169,49 @@ function ReviewPanel({ T, me, setSaveState }) {
                   </div>
                 ))}
               </div>
+              {(() => {
+                // 제출 가점 컨펌: 자동 판정(제출 시각 기준)을 보여주고, 담당자가 최종 가점을 선택해 확정
+                const wPlan = planFor(resolveStart(cur.training, cur.joinDate));
+                const wLast = wPlan.schedule.find((dd) => dd.week === w.no && dd.isLast);
+                const wDeadline = new Date(wLast.date + "T10:00:00").getTime();
+                const fmtAt = (at) => {
+                  const d = new Date(at);
+                  const p = (x) => String(x).padStart(2, "0");
+                  return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+                };
+                const files = [
+                  { id: "report-ppt", label: "PPT 작성본", f: "pptBonus" },
+                  { id: "report-book", label: "책 서평", f: "bookBonus" },
+                ];
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 7 }}>
+                    {files.map((x) => {
+                      const m = (cur.submissions || {})[`${wLast.key}:${x.id}`];
+                      const auto = m && m.at ? submitBonus(wPlan, w.no, m.at) : Date.now() > wDeadline ? { pts: -5, label: "⚠️ 미제출 -5" } : { pts: 0, label: "마감 전" };
+                      const ov = r[x.f];
+                      return (
+                        <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: T.orange, flexShrink: 0 }}>가점 · {x.label}</span>
+                          <span style={{ fontSize: 12, color: T.faint }}>
+                            {m && m.at ? `${fmtAt(m.at)} 제출` : "미제출"} · 자동 판정 {auto.label}
+                          </span>
+                          <select
+                            value={ov != null ? String(ov) : ""}
+                            onChange={(e) => save(wk, { [x.f]: e.target.value === "" ? null : Number(e.target.value) })}
+                            style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, border: `1.5px solid ${ov != null ? T.orange : T.inputBorder}`, borderRadius: 8, padding: "4px 8px", background: T.cardSoft, color: ov != null ? T.orange : T.text }}
+                          >
+                            <option value="">자동 따름 ({auto.pts > 0 ? `+${auto.pts}` : auto.pts})</option>
+                            <option value="5">확정 +5</option>
+                            <option value="3">확정 +3</option>
+                            <option value="0">확정 0</option>
+                            <option value="-5">확정 -5</option>
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
               <CommentInput T={T} value={r.comment || ""} onCommit={(t) => save(wk, { comment: t })} />
             </div>
           );
