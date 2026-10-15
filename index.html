@@ -200,7 +200,7 @@ function taskLabel(task, w) {
 const ADMIN_NAMES = ["김재민"];
 
 // 앱 버전 — 배포(push)할 때마다 올린다. 화면 맨 아래 표시되어 "새 버전이 반영됐는지" 확인용.
-const APP_VERSION = "v10.15.1";
+const APP_VERSION = "v10.15.2";
 
 function buildSchedule(weeks) {
   const days = [];
@@ -475,14 +475,24 @@ const REVIEW_ITEMS = [
 function calcWeekReview(plan, r, checks, goals, submissions, targets, weekNo) {
   const lastDay = plan.schedule.find((d) => d.week === weekNo && d.isLast);
   const pptSubmitted = !!(((submissions || {})[`${lastDay.key}:report-ppt`] || {}).at);
-  const pptAuto = pptSubmitted ? 20 : Math.round(weekAreaRate(plan, checks, goals, targets, weekNo, "ppt") * 20 * 10) / 10;
+  // PPT 달성률 20점(2026-10-15 확정): 담당자가 평가 탭에 "작성 장수"(pptDone)를 기입하면
+  // 그 장수 ÷ 주차 목표 장수(개인별 총량) 비율로 계산 — 최종 채점은 수동 기입이 기준.
+  // 기입 전에는 기존 방식(제출 시 만점 / 일별 목표 실시간)으로 임시 표시 (과거 기록 호환).
+  const pptTarget = ((targets || {})["w" + weekNo] || {}).ppt;
+  const pptDone = (r || {}).pptDone;
+  const pptAuto =
+    pptDone != null && pptTarget > 0
+      ? Math.round(Math.min(1, pptDone / pptTarget) * 20 * 10) / 10
+      : pptSubmitted
+        ? 20
+        : Math.round(weekAreaRate(plan, checks, goals, targets, weekNo, "ppt") * 20 * 10) / 10;
   const bookSubmitted = !!(((submissions || {})[`${lastDay.key}:report-book`] || {}).at);
   const bookAuto = bookSubmitted ? 10 : Math.round(weekAreaRate(plan, checks, goals, targets, weekNo, "book") * 10 * 10) / 10;
   const bonus = weekBonus(plan, submissions, weekNo);
   const m = r || {};
   const manual = (m.acc || 0) + (m.essay || 0) + (m.bookTest || 0) + (m.test || 0);
   const total = Math.round((pptAuto + bookAuto + manual) * 10) / 10;
-  const entered = !!r && (m.acc != null || m.essay != null || m.bookTest != null || m.test != null || !!m.comment);
+  const entered = !!r && (m.acc != null || m.essay != null || m.bookTest != null || m.test != null || m.pptDone != null || !!m.comment);
   const live = Math.round((pptAuto + bookAuto) * 10) / 10; // 평가 전에도 보이는 실시간 자동 점수
   return { pptAuto, bookAuto, bonus, total, live, entered };
 }
@@ -1671,7 +1681,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                             <div style={{ ...sec, color: T.blue }}>
                               📊 PPT <span style={{ color: T.faint, fontWeight: 700 }}>소계 {pptSum}/40{bonusTag(pptSub)}</span>
                             </div>
-                            {bar("장표 목표 달성 (제출 시 만점)", rv.pptAuto, 20, T.blue)}
+                            {bar(r.pptDone != null ? `장표 목표 달성 (확인 ${r.pptDone}장)` : "장표 목표 달성 (확인 전)", rv.pptAuto, 20, T.blue)}
                             {bar("정확성 (담당자)", r.acc != null ? r.acc : null, 20, T.blue)}
                             {subLine(pptSub)}
                           </div>
@@ -1856,7 +1866,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
 
           <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>주차 100점은 이렇게 나뉩니다</div>
           {[
-            { icon: "📊", name: "PPT", pts: 40, color: "blue", goal: "표준 장표를 짧은 시간 안에 정확하게 완성하는 실전 제작력을 기릅니다.", detail: "달성률 20 (작성본 제출 시 만점) + 정확성 20 (담당자 평가)" },
+            { icon: "📊", name: "PPT", pts: 40, color: "blue", goal: "표준 장표를 짧은 시간 안에 정확하게 완성하는 실전 제작력을 기릅니다.", detail: "달성률 20 (주차 목표 장수 대비 작성 장수 — 담당자 확인) + 정확성 20 (담당자 평가)" },
             { icon: "📚", name: "책 서평", pts: 30, color: "purple", goal: "병원 경영을 보는 자기만의 관점과 논리를 만듭니다.", detail: "서평 10 + 달성률 10 (서평 제출 시 만점) + 책 TEST 10" },
             { icon: "📋", name: "프로젝트 보고서", pts: 30, color: "w2", goal: "실제 프로젝트의 핵심 지식을 익힙니다.", detail: "지식 TEST 30" },
           ].map((c) => (
@@ -3133,6 +3143,19 @@ function ReviewPanel({ T, me, setSaveState }) {
                 {r.by && <span style={{ marginLeft: "auto", fontSize: 11.5, color: T.faint }}>{r.by}</span>}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 7 }}>
+                {(() => {
+                  // PPT 작성 장수 기입 → 목표 대비 비율로 달성률 20점 자동 환산 (최종 채점 기준)
+                  const pptTgt = (mergeTargets(cfg.targets, cur.training && cur.training.targets)["w" + w.no] || {}).ppt || 0;
+                  return (
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: T.blue }}>PPT 작성 장수</span>
+                      <ScoreInput T={T} max={999} value={r.pptDone !== undefined ? r.pptDone : null} onCommit={(n) => save(wk, { pptDone: n })} />
+                      <span style={{ fontSize: 11.5, color: T.faint }}>
+                        /{pptTgt || "?"}장 → 달성률 {rv.pptAuto}/20
+                      </span>
+                    </div>
+                  );
+                })()}
                 {REVIEW_ITEMS.map((it) => (
                   <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 5 }}>
                     <span style={{ fontSize: 12, fontWeight: 700, color: T.sub }}>{it.label}</span>
