@@ -200,7 +200,7 @@ function taskLabel(task, w) {
 const ADMIN_NAMES = ["김재민"];
 
 // 앱 버전 — 배포(push)할 때마다 올린다. 화면 맨 아래 표시되어 "새 버전이 반영됐는지" 확인용.
-const APP_VERSION = "v10.6.4";
+const APP_VERSION = "v10.15.1";
 
 function buildSchedule(weeks) {
   const days = [];
@@ -284,6 +284,15 @@ function resolveStart(training, joinDate) {
   if (training && training.start) return training.start;
   if (joinDate && joinDate > DEFAULT_START) return joinDate;
   return DEFAULT_START;
+}
+
+// 사람별 총량: users/<이름>/training/targets 값이 있으면 공통(config/targets)을 주차·영역 단위로 덮어쓴다
+function mergeTargets(cfgTargets, trainingTargets) {
+  const out = {};
+  ["w1", "w2", "w3", "w4"].forEach((k) => {
+    out[k] = { ...((cfgTargets || {})[k] || {}), ...((trainingTargets || {})[k] || {}) };
+  });
+  return out;
 }
 
 function fmtDate(dateStr) {
@@ -888,14 +897,15 @@ function AllView({ T }) {
     .map(([n, v]) => {
       // 사람별 교육 일정 — 시작일이 다르면 주차·오늘·마감도 각자 기준으로 계산된다
       const plan = planFor(resolveStart(v && v.training, v && v.joinDate));
+      const tgU = mergeTargets(cfgAll.targets, v && v.training && v.training.targets); // 사람별 총량
       const todayD = plan.byDate[today] || null;
       const wkNo = currentWeekNo(plan, today);
       const wkDays = plan.schedule.filter((d) => d.week === wkNo);
-      const tw = (cfgAll.targets || {})["w" + wkNo] || {};
+      const tw = tgU["w" + wkNo] || {};
       const checks = (v && v.checks) || {};
       const goals = (v && v.goals) || {};
       const rv = (v && v.reviews) || {};
-      const cumU = calcCumulative(plan, rv, checks, goals, (v && v.submissions) || {}, cfgAll.targets || {}, cfgAll.finalTest);
+      const cumU = calcCumulative(plan, rv, checks, goals, (v && v.submissions) || {}, tgU, cfgAll.finalTest);
       const evaluated = cumU.weeks.filter((x) => x.entered);
       const revSummary =
         `누적 ${cumU.cum}/500` +
@@ -1024,7 +1034,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
   const [matTarget, setMatTarget] = useState("공통"); // 담당자의 자료 대상: "공통" 또는 신입 이름
   const [traineeNames, setTraineeNames] = useState(null); // 담당자용 신입 이름 목록 (자료 대상 선택)
 
-  const targets = cfg.targets || {};
+  const targets = useMemo(() => mergeTargets(cfg.targets, training.targets), [cfg, training]); // 공통+개인 총량
   const staff = cfg.staff || {};
   const isAdmin = ADMIN_NAMES.includes(name);
   const isStaff = isAdmin || !!staff[name];
@@ -2762,6 +2772,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
 function AdminPanel({ T, targets, weeks, staff, finalTest, setSaveState }) {
   const [users, setUsers] = useState({});
   const [staffInput, setStaffInput] = useState("");
+  const [tgOpen, setTgOpen] = useState(null); // 개인 목표량 그리드가 펼쳐진 신입 이름
   useEffect(() => {
     const ref = db.ref("users");
     const cb = ref.on("value", (s) => setUsers(s.val() || {}));
@@ -2921,26 +2932,65 @@ function AdminPanel({ T, targets, weeks, staff, finalTest, setSaveState }) {
           기록된 일자별 체크·목표가 다른 날짜에 붙으므로 시작 전에만 설정하세요.
         </div>
         {traineeNames.length === 0 && <div style={{ fontSize: 13, color: T.faint }}>등록된 신입이 없어요.</div>}
-        {traineeNames.map((n) => (
-          <div key={n} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", flexWrap: "wrap" }}>
-            <span style={{ width: 118, fontSize: 14, fontWeight: 700, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              👤 {n}{users[n] && users[n].rank ? ` ${users[n].rank}` : ""}
-            </span>
-            <TextCommit
-              T={T}
-              small
-              value={(users[n] && users[n].mentor) || ""}
-              placeholder="담당자 이름"
-              onCommit={(t) => saveDb(`users/${n}/mentor`, t || null)}
-            />
-            <input
-              type="date"
-              value={(users[n] && users[n].training && users[n].training.start) || ""}
-              onChange={(e) => saveDb(`users/${n}/training/start`, e.target.value || null)}
-              style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, border: `1.5px solid ${T.inputBorder}`, borderRadius: 8, padding: "7px 10px", background: T.cardSoft, color: T.text }}
-            />
-          </div>
-        ))}
+        {traineeNames.map((n) => {
+          const uTg = ((users[n] || {}).training || {}).targets || {};
+          const open = tgOpen === n;
+          return (
+            <div key={n} style={{ padding: "6px 0", borderBottom: `1px solid ${T.line}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ width: 118, fontSize: 14, fontWeight: 700, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  👤 {n}{users[n] && users[n].rank ? ` ${users[n].rank}` : ""}
+                </span>
+                <TextCommit
+                  T={T}
+                  small
+                  value={(users[n] && users[n].mentor) || ""}
+                  placeholder="담당자 이름"
+                  onCommit={(t) => saveDb(`users/${n}/mentor`, t || null)}
+                />
+                <input
+                  type="date"
+                  value={(users[n] && users[n].training && users[n].training.start) || ""}
+                  onChange={(e) => saveDb(`users/${n}/training/start`, e.target.value || null)}
+                  style={{ fontFamily: FONT, fontSize: 13, fontWeight: 700, border: `1.5px solid ${T.inputBorder}`, borderRadius: 8, padding: "7px 10px", background: T.cardSoft, color: T.text }}
+                />
+                <button
+                  onClick={() => setTgOpen(open ? null : n)}
+                  style={{ border: `1.5px solid ${T.inputBorder}`, borderRadius: 8, padding: "7px 10px", background: open ? T.blueSoft : T.cardSoft, color: T.blue, cursor: "pointer", fontFamily: FONT, fontSize: 13, fontWeight: 700 }}
+                >
+                  🎯 개인 목표량 {open ? "▴" : "▾"}
+                </button>
+              </div>
+              {open && (
+                <div style={{ margin: "10px 0 4px", padding: "10px 12px", borderRadius: 8, background: T.cardSoft }}>
+                  <div style={{ fontSize: 12.5, color: T.faint, marginBottom: 8, lineHeight: 1.6 }}>
+                    {n}에게만 적용되는 주차 총량이에요. 비워두면 위의 공통 목표량을 따릅니다.
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 4, paddingLeft: 52 }}>
+                    {AREA_IDS.map((a) => (
+                      <div key={a} style={{ flex: 1, textAlign: "center", fontSize: 12, fontWeight: 700, color: T.sub }}>
+                        {AREA_LABEL[a]}
+                      </div>
+                    ))}
+                  </div>
+                  {WEEKS.map((w) => (
+                    <div key={w.no} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0" }}>
+                      <div style={{ width: 44, fontSize: 13, fontWeight: 800, color: T[WEEK_COLOR[w.no]], flexShrink: 0 }}>{w.no}주차</div>
+                      {AREA_IDS.map((a) => (
+                        <TargetInput
+                          key={a}
+                          T={T}
+                          value={(uTg["w" + w.no] || {})[a] || 0}
+                          onCommit={(x) => saveDb(`users/${n}/training/targets/w${w.no}/${a}`, x > 0 ? x : null)}
+                        />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -3067,7 +3117,7 @@ function ReviewPanel({ T, me, setSaveState }) {
             cur.checks || {},
             cur.goals || {},
             cur.submissions || {},
-            cfg.targets || {},
+            mergeTargets(cfg.targets, cur.training && cur.training.targets),
             w.no
           );
           return (
