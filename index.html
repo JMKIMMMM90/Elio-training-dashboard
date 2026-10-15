@@ -200,7 +200,7 @@ function taskLabel(task, w) {
 const ADMIN_NAMES = ["김재민"];
 
 // 앱 버전 — 배포(push)할 때마다 올린다. 화면 맨 아래 표시되어 "새 버전이 반영됐는지" 확인용.
-const APP_VERSION = "v10.15.4";
+const APP_VERSION = "v10.15.5";
 
 function buildSchedule(weeks) {
   const days = [];
@@ -461,6 +461,21 @@ function weekBonus(plan, submissions, weekNo, r) {
     return Date.now() > deadline ? -5 : 0;
   });
   return pts[0] + pts[1];
+}
+
+// 파일 1건의 가점 표시 정보 — 모든 화면 공용. 담당자 확정값(pptBonus·bookBonus)이 있으면
+// 그것을, 없으면 제출 시각 자동 판정을 보여준다. 화면마다 다른 값이 보이면 안 된다.
+function fileBonusInfo(plan, weekNo, r, submissions, id) {
+  const ov = (r || {})[id === "report-ppt" ? "pptBonus" : "bookBonus"];
+  if (ov != null) return { pts: ov, label: `확정 ${ov > 0 ? `+${ov}` : ov}`, confirmed: true };
+  const lastDay = plan.schedule.find((d) => d.week === weekNo && d.isLast);
+  const m = (submissions || {})[`${lastDay.key}:${id}`];
+  if (m && m.at) {
+    const b = submitBonus(plan, weekNo, m.at);
+    return { pts: b.pts, label: b.label, confirmed: false };
+  }
+  const deadline = new Date(lastDay.date + "T10:00:00").getTime();
+  return Date.now() > deadline ? { pts: -5, label: "⚠️ 미제출 -5", confirmed: false } : { pts: 0, label: "제출 전", confirmed: false };
 }
 
 // 담당자 입력 항목 (배점) — PPT 40 = 달성률 20(자동)+정확성 20 /
@@ -1369,11 +1384,15 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
             <span style={{ fontSize: 12.5, fontWeight: 600, color: T.sub, flex: 1, minWidth: 120, overflowWrap: "anywhere", lineHeight: 1.5 }}>
               📄 {m.fileName} ({fmtSize(m.size)})
             </span>
-            {m.at && (
-              <span style={{ fontSize: 11.5, fontWeight: 800, flexShrink: 0, color: submitBonus(plan, weekNo, m.at).pts > 0 ? T.green : submitBonus(plan, weekNo, m.at).pts < 0 ? T.red : T.sub }}>
-                {submitBonus(plan, weekNo, m.at).label}
-              </span>
-            )}
+            {m.at &&
+              (() => {
+                const bi = fileBonusInfo(plan, weekNo, reviews["w" + weekNo], submissions, t.id);
+                return (
+                  <span style={{ fontSize: 11.5, fontWeight: 800, flexShrink: 0, color: bi.pts > 0 ? T.green : bi.pts < 0 ? T.red : T.sub }}>
+                    {bi.label}
+                  </span>
+                );
+              })()}
             <a
               href={m.url}
               target="_blank"
@@ -1613,15 +1632,12 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
               const r = reviews["w" + w.no] || {};
               const openW = openScoreWeek === w.no;
               const lastDay = plan.schedule.find((d) => d.week === w.no && d.isLast);
-              // 제출 가점 정보 (해당 과정 섹션 아래에 표시) — 담당자 확정값이 있으면 그것을 우선 표시
+              // 제출 가점 정보 (해당 과정 섹션 아래에 표시) — fileBonusInfo로 전 화면과 동일한 값
               const subInfo = (id) => {
-                const ov = r[id === "report-ppt" ? "pptBonus" : "bookBonus"];
-                if (ov != null) return { pts: ov, text: `제출 가점 확정 ${ov > 0 ? `+${ov}` : ov} (담당자)` };
+                const bi = fileBonusInfo(plan, w.no, r, submissions, id);
+                if (bi.confirmed) return { pts: bi.pts, text: `제출 가점 ${bi.label} (담당자)` };
                 const m = submissions[`${lastDay.key}:${id}`];
-                if (m && m.at) {
-                  const b = submitBonus(plan, w.no, m.at);
-                  return { pts: b.pts, text: `제출 가점 ${b.label}` };
-                }
+                if (m && m.at) return { pts: bi.pts, text: `제출 가점 ${bi.label}` };
                 const nowPts = submitBonus(plan, w.no, Date.now()).pts;
                 return nowPts >= 0
                   ? { pts: null, text: `제출 전 — 지금 내면 가점 ${nowPts > 0 ? `+${nowPts}` : "0"}` }
@@ -1668,7 +1684,7 @@ function TrainingDashboard({ name, theme, switchTheme, onChangeName }) {
                         </div>
                       );
                       const subLine = (info) => (
-                        <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 4, color: info.pts > 0 ? T.green : info.pts != null && info.pts < 0 ? T.red : T.orange }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 4, color: info.pts > 0 ? T.green : info.pts != null && info.pts < 0 ? T.red : info.pts === 0 ? T.sub : T.orange }}>
                           {info.text}
                         </div>
                       );
@@ -3087,7 +3103,7 @@ function ReviewPanel({ T, me, setSaveState }) {
           const items = selPlan.schedule.filter((dd) => dd.isLast).flatMap((dd) =>
             dd.tasks
               .filter((tt) => tt.cat === "제출")
-              .map((tt) => ({ wk: dd.week, key: `${dd.key}:${tt.id}`, label: tt.id === "report-ppt" ? "PPT 작성본" : "책 서평" }))
+              .map((tt) => ({ wk: dd.week, id: tt.id, key: `${dd.key}:${tt.id}`, label: tt.id === "report-ppt" ? "PPT 작성본" : "책 서평" }))
           );
           const have = items.filter((it) => subs[it.key]);
           return (
@@ -3104,11 +3120,15 @@ function ReviewPanel({ T, me, setSaveState }) {
                     <span style={{ fontSize: 12.5, color: T.sub, flex: 1, minWidth: 100, overflowWrap: "anywhere" }}>
                       {m.fileName} ({fmtSize(m.size)})
                     </span>
-                    {m.at && (
-                      <span style={{ fontSize: 11.5, fontWeight: 800, flexShrink: 0, color: submitBonus(selPlan, it.wk, m.at).pts > 0 ? T.green : T.red }}>
-                        {submitBonus(selPlan, it.wk, m.at).label}
-                      </span>
-                    )}
+                    {m.at &&
+                      (() => {
+                        const bi = fileBonusInfo(selPlan, it.wk, (cur.reviews || {})["w" + it.wk], subs, it.id);
+                        return (
+                          <span style={{ fontSize: 11.5, fontWeight: 800, flexShrink: 0, color: bi.pts > 0 ? T.green : bi.pts < 0 ? T.red : T.sub }}>
+                            {bi.label}
+                          </span>
+                        );
+                      })()}
                     <a
                       href={m.url}
                       target="_blank"
