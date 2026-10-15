@@ -200,7 +200,7 @@ function taskLabel(task, w) {
 const ADMIN_NAMES = ["김재민"];
 
 // 앱 버전 — 배포(push)할 때마다 올린다. 화면 맨 아래 표시되어 "새 버전이 반영됐는지" 확인용.
-const APP_VERSION = "v10.15.3";
+const APP_VERSION = "v10.15.4";
 
 function buildSchedule(weeks) {
   const days = [];
@@ -3048,8 +3048,9 @@ function ReviewPanel({ T, me, setSaveState }) {
     <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 8, padding: 18 }}>
       <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>평가 입력</div>
       <div style={{ fontSize: 12.5, color: T.faint, marginBottom: 14, lineHeight: 1.6 }}>
-        달성률·제출가점은 자동 계산돼요. 정확성(/20)·서평(/10)·책 TEST(/10)·보고서 TEST(/30)와 코멘트만 입력하면
-        칸 밖을 누르는 순간 저장되고 신입 본인 화면에 바로 표시돼요.
+        PPT 달성률은 "작성 장수"를 기입하면 목표 대비 비율로 환산되고, 제출 가점은 자동 판정을 보고 확정을
+        선택하면 반영돼요(선택 안 하면 자동 판정 그대로). 나머지 점수·코멘트는 칸 밖을 누르는 순간 저장되어
+        신입 본인 화면에 바로 표시돼요.
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
         {names.map((n) => {
